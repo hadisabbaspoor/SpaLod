@@ -3,8 +3,8 @@
     <h2>Register</h2>
     <form @submit.prevent="submitForm">
       <div>
-        <label for="username">Username</label>
-        <input type="text" id="username" v-model="username" required />
+        <label for="email">Email</label>
+        <input type="email" id="email" v-model="email" required />
       </div>
       <div>
         <label for="password">Password</label>
@@ -30,7 +30,7 @@ import { $ajax } from "../services/api";
 export default {
   data() {
     return {
-      username: "",
+      email: "",
       password: "",
       confirmPassword: "",
     };
@@ -42,7 +42,7 @@ export default {
           url: "/auth/registration/",
           method: "POST",
           data: {
-            username: this.username,
+            email: this.email,
             password1: this.password,
             password2: this.confirmPassword,
           },
@@ -54,7 +54,7 @@ export default {
               url: "/auth/login/",
               method: "POST",
               data: {
-                username: this.username,
+                email: this.email,
                 password: this.password,
               },
               xhrFields: {
@@ -65,7 +65,7 @@ export default {
                   url: "/uuid",
                   method: "GET",
                   data: {
-                    username: this.username,
+                    email: this.email,
                   },
                   xhrFields: {
                     withCredentials: true,
@@ -78,7 +78,7 @@ export default {
                       group: "login-success",
                       duration: 50000,
                     });
-                    localStorage.setItem("username", this.username);
+                    localStorage.setItem("email", this.email);
                     localStorage.setItem("uuid", response);
 
                     window.history.pushState({}, "", "/admin");
@@ -100,7 +100,7 @@ export default {
           error: (error) => {
             this.$notify({
               title: "User already registered",
-              text: "Please chose an other username.",
+              text: "Please chose another Email.",
               type: "error",
               duration: 5000, // notification will disappear after 5 seconds
             });

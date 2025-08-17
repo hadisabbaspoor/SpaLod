@@ -3,8 +3,8 @@
     <h2>Login</h2>
     <form @submit.prevent="submitForm">
       <div>
-        <label for="username">Username</label>
-        <input type="username" id="username" v-model="username" required />
+        <label for="email">Email</label>
+        <input type="email" id="email" v-model="email" required />
       </div>
       <div>
         <label for="password">Password</label>
@@ -27,7 +27,7 @@ export default {
   name: "Login",
   data() {
     return {
-      username: "",
+      email: "",
       password: "",
     };
   },
@@ -37,7 +37,7 @@ export default {
         url: "/auth/login/",
         method: "POST",
         data: {
-          username: this.username,
+          email: this.email,
           password: this.password,
         },
         xhrFields: {
@@ -49,7 +49,7 @@ export default {
             url: "/uuid",
             method: "GET",
             data: {
-              username: this.username,
+              email: this.email,
             },
             xhrFields: {
               withCredentials: true,
@@ -64,7 +64,7 @@ export default {
                 duration: 50000,
               });
               localStorage.clear();
-              localStorage.setItem("username", this.username);
+              localStorage.setItem("email", this.email);
               localStorage.setItem("UUID", response);
               localStorage.setItem("githubLog", false);
 
