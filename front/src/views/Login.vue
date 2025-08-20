@@ -17,6 +17,9 @@
     <div>
       <button @click="signInGitlab">Sign in with Gitlab</button>
     </div>
+    <div style="margin-top: 10px;">
+      <router-link to="/reset-password">Forgot your password?</router-link>
+    </div>
   </div>
 </template>
 

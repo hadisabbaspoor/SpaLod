@@ -22,6 +22,7 @@ from allauth.socialaccount.providers.facebook.views import FacebookOAuth2Adapter
 from django.conf import settings
 from django.conf.urls.static import static
 from spalod_app.auth_gitlab import Authorize, Redirect
+from spalod_app.views.auth import PasswordResetConfirmRedirect
 
 class GitLabLogin(SocialLoginView):
     adapter_class = GitLabOAuth2Adapter
@@ -32,6 +33,11 @@ class FacebookLogin(SocialLoginView):
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('accounts/', include('allauth.urls')),  # Add this for allauth
+    path(
+        'auth/password/reset/confirm/<str:uidb64>/<str:token>/',
+        PasswordResetConfirmRedirect.as_view(),
+        name='password_reset_confirm',
+    ),
     path('auth/', include('dj_rest_auth.urls')),  # REST auth
     path('auth/registration/', include('dj_rest_auth.registration.urls')),
     path('auth/social/', include('allauth.socialaccount.urls')),  # For GitLab auth

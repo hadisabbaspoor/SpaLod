@@ -73,6 +73,9 @@ AUTHENTICATION_BACKENDS = (
     'allauth.account.auth_backends.AuthenticationBackend',  # Add this for allauth
 )
 
+EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'  # dev_mode
+ACCOUNT_DEFAULT_HTTP_PROTOCOL = "http"  # dev_mode
+
 SOCIAL_AUTH_GITLAB_KEY = '404b08ce3f55a47545e7fcc60402af9e0e81879c9374a1ad0110a301b5c5fa0f'
 SOCIAL_AUTH_GITLAB_SECRET = 'gloas-b258242c5d6c0dd39d265a4e5bf4b3f05d56f5020825259cf1cb4b7238c16686'
 SOCIAL_AUTH_GITLAB_REDIRECT_URI = 'http://localhost:8000/auth/gitlab/redirect/'
@@ -202,3 +205,9 @@ FLYVAST_API_URL = 'https://app.flyvast.com/flyvast/app/server/bll'
 GRAPH_DB_STATEMENTS="http://localhost:7200/repositories/Spalod/statements"
 GRAPH_DB="http://localhost:7200/repositories/Spalod"
 SPALOD_URL = 'https://spalod.geovast3d.com'
+
+FRONTEND_BASE_URL = "http://localhost:8080"
+REST_AUTH = {
+    "PASSWORD_RESET_CONFIRM_URL": "reset-password/{uid}/{token}",
+    
+}
