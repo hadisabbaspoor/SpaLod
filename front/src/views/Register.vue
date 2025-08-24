@@ -98,20 +98,43 @@ export default {
             });
           },
           error: (error) => {
-            this.$notify({
-              title: "User already registered",
-              text: "Please chose another Email.",
-              type: "error",
-              duration: 5000, // notification will disappear after 5 seconds
-            });
-            console.error(error);
+            const e = error?.responseJSON;
+            if (!e || typeof e !== "object") {
+              this.$notify({
+                title: "Registration failed",
+                text: "Please check your inputs and try again.",
+                type: "error",
+                duration: 8000,
+              });
+              console.error("Non-JSON error:", error);
+              return;
+            }
+
+            const first = (v) => (Array.isArray(v) ? v[0] : v);
+
+            let title = "Registration failed";
+            if (e.email) title = "Email already in use";
+            else if (e.password2) title = "Passwords do not match";
+            else if (e.password1) title = "Weak password";
+            else if (e.non_field_errors) title = "Registration error";
+
+            const text =
+              first(e.email) ||
+              first(e.password1) ||
+              first(e.password2) ||
+              first(e.non_field_errors) ||
+              e.detail ||
+              "Please check your inputs and try again.";
+
+            this.$notify({ title, text, type: "error", duration: 5000 });
+            console.error("Registration error:", e);
           },
         });
       } else {
         this.$notify({
           title: "Please make sure your passwords match. ",
           type: "error",
-          duration: 10000, // notification will disappear after 5 seconds
+          duration: 5000, // notification will disappear after 5 seconds
         });
       }
     },
