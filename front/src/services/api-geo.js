@@ -107,6 +107,7 @@ export async function getGeoData(results) {
   const REGEX_POINT = /^POINT\s*?\((-?[\d\.]+) (-?[\d\.]+)\)/i;
   const REGEX_MULTILINESTRING = /^MULTILINESTRING\s*?\(\(.*?\)\)/i;
   const REGEX_LINESTRING = /^LINESTRING\s*?\(.*?\)/i;
+  const REGEX_MULTIPOLYGON = /^MULTIPOLYGON\s*?\(\(\(.*?\)\)\)/i;
   const REGEX_POLYGON = /^POLYGON\s*?\(\(.*?\)\)/i;
 
   for (const result of results) {
@@ -137,14 +138,81 @@ export async function getGeoData(results) {
           )
         );
         itemRes.type = "MULTILINESTRING";
+     } else if (REGEX_MULTIPOLYGON.test(property)) {
+        const splitTopLevelByComma = (s) => {
+          const parts = [];
+          let depth = 0, start = 0;
+          for (let i = 0; i < s.length; i++) {
+            const c = s[i];
+            if (c === "(") depth++;
+            else if (c === ")") depth--;
+            else if (c === "," && depth === 0) {
+              parts.push(s.slice(start, i).trim());
+              start = i + 1;
+            }
+          }
+          const tail = s.slice(start).trim();
+          if (tail) parts.push(tail);
+          return parts;
+        };
+        const stripParens = (s) => {
+          s = s.trim();
+          if (s.startsWith("(") && s.endsWith(")")) return s.slice(1, -1).trim();
+          return s;
+        };
+
+        let body = property.trim()
+          .replace(/^MULTIPOLYGON\s*\(/i, "")
+          .replace(/\)\s*$/, "");
+
+        const polygonGroups = splitTopLevelByComma(body).map(stripParens);
+
+        const polys = polygonGroups.map((pg) => {
+          const ringGroups = splitTopLevelByComma(pg).map(stripParens);
+          return ringGroups.map((ring) =>
+            ring.split(/\s*,\s*/).map((pair) => {
+              const [x, y] = pair.trim().split(/\s+/).map(Number);
+              return [x, y];
+            })
+          );
+        });
+
+        itemRes.geo = polys;          // [polygon][ring][point]
+        itemRes.type = "MULTIPOLYGON";
       } else if (REGEX_POLYGON.test(property)) {
-        itemRes.geo = property.split(",").map((x) =>
-          x
-            .trim()
-            .replace(/^POLYGON \(\(/i, "")
-            .replace("))", "")
-            .split(" ")
-            .map((y) => Number(y))
+        const splitTopLevelByComma = (s) => {
+          const parts = [];
+          let depth = 0, start = 0;
+          for (let i = 0; i < s.length; i++) {
+            const c = s[i];
+            if (c === "(") depth++;
+            else if (c === ")") depth--;
+            else if (c === "," && depth === 0) {
+              parts.push(s.slice(start, i).trim());
+              start = i + 1;
+            }
+          }
+          const tail = s.slice(start).trim();
+          if (tail) parts.push(tail);
+          return parts;
+        };
+        const stripParens = (s) => {
+          s = s.trim();
+          if (s.startsWith("(") && s.endsWith(")")) return s.slice(1, -1).trim();
+          return s;
+        };
+
+        let body = property.trim()
+          .replace(/^POLYGON\s*\(/i, "")
+          .replace(/\)\s*$/, "");
+
+        const rings = splitTopLevelByComma(body).map(stripParens);
+
+        itemRes.geo = rings.map((ring) =>
+          ring.split(/\s*,\s*/).map((pair) => {
+            const [x, y] = pair.trim().split(/\s+/).map(Number);
+            return [x, y];
+          })
         );
         itemRes.type = "POLYGON";
       } else if (REGEX_POINT.test(property)) {
