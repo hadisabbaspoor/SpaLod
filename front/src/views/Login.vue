@@ -1,21 +1,26 @@
 <template>
-  <div class="login-container">
-    <h2>Login</h2>
-    <form @submit.prevent="submitForm">
+  <div class="page-wrapper">
+    <div class="auth-card">
+      <h2>Login</h2>
+      <form @submit.prevent="submitForm">
+        <div>
+          <label for="email">Email</label>
+          <input type="email" id="email" v-model="email" required />
+        </div>
+        <div>
+          <label for="password">Password</label>
+          <input type="password" id="password" v-model="password" required />
+        </div>
+        <button type="submit">Login</button>
+      </form>
+      <!-- <p> Login with OAuth 2.0</p>
+        <button @click="oauthLogin()">Github</button> -->
       <div>
-        <label for="username">Username</label>
-        <input type="username" id="username" v-model="username" required />
+        <button @click="signInGitlab">Sign in with Gitlab</button>
       </div>
       <div>
-        <label for="password">Password</label>
-        <input type="password" id="password" v-model="password" required />
+        <router-link class="forgot-pass" to="/reset-password">Forgot your password?</router-link>
       </div>
-      <button type="submit">Login</button>
-    </form>
-    <!-- <p> Login with OAuth 2.0</p>
-      <button @click="oauthLogin()">Github</button> -->
-    <div>
-      <button @click="signInGitlab">Sign in with Gitlab</button>
     </div>
   </div>
 </template>
@@ -27,7 +32,7 @@ export default {
   name: "Login",
   data() {
     return {
-      username: "",
+      email: "",
       password: "",
     };
   },
@@ -37,7 +42,7 @@ export default {
         url: "/auth/login/",
         method: "POST",
         data: {
-          username: this.username,
+          email: this.email,
           password: this.password,
         },
         xhrFields: {
@@ -49,7 +54,7 @@ export default {
             url: "/uuid",
             method: "GET",
             data: {
-              username: this.username,
+              email: this.email,
             },
             xhrFields: {
               withCredentials: true,
@@ -64,7 +69,7 @@ export default {
                 duration: 50000,
               });
               localStorage.clear();
-              localStorage.setItem("username", this.username);
+              localStorage.setItem("email", this.email);
               localStorage.setItem("UUID", response);
               localStorage.setItem("githubLog", false);
 
@@ -94,17 +99,3 @@ export default {
   },
 };
 </script>
-
-<style>
-.login-container {
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  align-items: center;
-  width: 100vw;
-}
-
-.login-container > h2 {
-  margin-bottom: 20px;
-}
-</style>

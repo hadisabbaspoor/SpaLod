@@ -270,31 +270,31 @@ class GraphDBManager:
         # Set the graph IRI only if user_id is provided
         self.graph_iri = f"https://geovast3d.com/ontologies/spalod#graph_{user_id}" if user_id is not None else None
 
-    def upload_to_graphdb(self, triples):
-        """Uploads triples to a user-specific named graph in GraphDB."""
+    # def upload_to_graphdb(self, triples):
+    #     """Uploads triples to a user-specific named graph in GraphDB."""
         
-        if self.graph_iri is None:
-            raise ValueError("User ID is required to determine the target graph.")
+    #     if self.graph_iri is None:
+    #         raise ValueError("User ID is required to determine the target graph.")
 
-        # Prepare SPARQL Update query
-        update_query = f"PREFIX dc: <http://purl.org/dc/elements/1.1/>\n INSERT DATA {{ GRAPH <{self.graph_iri}> {{"
-        for s, p, o in triples:
-            if isinstance(o, URIRef):
-                update_query += f"<{s}> <{p}> <{o}> . "
-            else:
-                update_query += f"<{s}> <{p}> \"{o}\" . "
-        update_query += "}}}"
+    #     # Prepare SPARQL Update query
+    #     update_query = f"PREFIX dc: <http://purl.org/dc/elements/1.1/>\n INSERT DATA {{ GRAPH <{self.graph_iri}> {{"
+    #     for s, p, o in triples:
+    #         if isinstance(o, URIRef):
+    #             update_query += f"<{s}> <{p}> <{o}> . "
+    #         else:
+    #             update_query += f"<{s}> <{p}> \"{o}\" . "
+    #     update_query += "}}}"
 
-        # Set up SPARQLWrapper for updates
-        self.sparql_statements.setMethod(POST)
-        self.sparql_statements.setQuery(update_query.encode("utf-8"))
-        self.sparql_statements.setReturnFormat(JSON)
+    #     # Set up SPARQLWrapper for updates
+    #     self.sparql_statements.setMethod(POST)
+    #     self.sparql_statements.setQuery(update_query.encode("utf-8"))
+    #     self.sparql_statements.setReturnFormat(JSON)
 
-        try:
-            self.sparql_statements.query()
-        except Exception as e:
-            print(f"SPARQL update failed: {e}")
-            raise
+    #     try:
+    #         self.sparql_statements.query()
+    #     except Exception as e:
+    #         print(f"SPARQL update failed: {e}")
+    #         raise
 
     def query_graphdb_depreciated(self, select_query):
         """Executes a SPARQL SELECT query only within the user's named graph (if user_id is set)."""
@@ -375,7 +375,8 @@ class GraphDBManager:
         """
 
         self.sparql_statements.setMethod(POST)
-        self.sparql_statements.setQuery(update_query.encode("utf-8"))
+        self.sparql_statements.setRequestMethod(POSTDIRECTLY)
+        self.sparql_statements.setQuery(update_query)
         self.sparql_statements.setReturnFormat(JSON)
 
         try:
@@ -1132,8 +1133,8 @@ class GraphDBManager:
 
             elif feature_type.lower() == "polygon":
                 # WKT for Polygon: POLYGON ((x1 y1, x2 y2, ...))
-                formatted_coords = ", ".join([format_coords(coord) for coord in coordinates])
-                wkt_string = f"POLYGON (({formatted_coords}))"
+                formatted_coords = ", ".join(f"({', '.join(format_coords(point) for point in coord)})" for coord in coordinates)
+                wkt_string = f"POLYGON ({formatted_coords})"
 
             elif feature_type.lower() == "multilinestring":
                 # WKT for MultiLineString: MULTILINESTRING ((x1 y1, x2 y2), (x3 y3, x4 y4), ...)
@@ -1142,7 +1143,11 @@ class GraphDBManager:
 
             elif feature_type.lower() == "multipolygon":
                 # WKT for MultiPolygon: MULTIPOLYGON (((x1 y1, x2 y2, ...)), ((x3 y3, x4 y4, ...)), ...)
-                formatted_polygons = ", ".join([f"(({', '.join([format_coords(coord) for coord in polygon])}))" for polygon in coordinates])
+                formatted_polygons_list = []
+                for polygon in coordinates:
+                    rings_str = ", ".join([f"({', '.join([format_coords(coord) for coord in ring])})" for ring in polygon])
+                    formatted_polygons_list.append(f"({rings_str})")
+                formatted_polygons = ", ".join(formatted_polygons_list)
                 wkt_string = f"MULTIPOLYGON ({formatted_polygons})"
 
             else:

@@ -160,7 +160,8 @@ export default {
       });
 
       this.map.attributionControl.setPrefix(false);
-
+      this.renderer = L.canvas();
+      
       // Definition of layers
       const baseLayers = {
         Grayscale: grayscale,
@@ -206,6 +207,7 @@ export default {
         mapObj = new L.Polyline(
           feature.wkt.geo.map(([lng, lat]) => new L.LatLng(lat, lng)),
           {
+            renderer: this.renderer,
             color: "blue",
             weight: 3,
             opacity: 0.5,
@@ -218,6 +220,7 @@ export default {
             x.map(([lng, lat]) => new L.LatLng(lat, lng))
           ),
           {
+            renderer: this.renderer,
             color: "blue",
             weight: 3,
             opacity: 0.5,
@@ -225,15 +228,35 @@ export default {
           }
         );
       } else if (feature.wkt.type === "POLYGON") {
-        mapObj = new L.Polygon(
-          feature.wkt.geo.map(([lng, lat]) => new L.LatLng(lat, lng)),
-          {
+          const g = feature.wkt.geo;
+          const latlngs = Array.isArray(g?.[0]?.[0])
+            ? g.map(ring => ring.map(([lng, lat]) => [lat, lng]))   // [ring][point]
+            : [ g.map(([lng, lat]) => [lat, lng]) ];                // [point] → [ring][point]
+
+          mapObj = L.polygon(latlngs, {
+            renderer: this.renderer,
             color: "blue",
             weight: 3,
             opacity: 0.5,
             smoothFactor: 1,
           }
         );
+      } else if (feature.wkt.type === "MULTIPOLYGON") {
+          const latlngs = feature.wkt.geo.map((poly) =>
+            poly.map((ring) => ring.map(([lng, lat]) => [lat, lng]))
+          );
+          const layers = latlngs.map((polyLatLngs) =>
+          L.polygon(polyLatLngs, {
+            renderer: this.renderer,
+            color: "blue",
+            weight: 3,
+            opacity: 0.5,
+            smoothFactor: 1,
+            interactive: true ,
+            bubblingMouseEvents: true,
+            })
+          );
+          mapObj = L.featureGroup(layers);
       } else if (feature.wkt.type === "POINT") {
         // mapObj = new L.marker(
         //   new L.LatLng(feature.wkt.geo[1], feature.wkt.geo[0])
@@ -241,6 +264,7 @@ export default {
         mapObj = L.circleMarker(
           new L.LatLng(feature.wkt.geo[1], feature.wkt.geo[0]),
           {
+            renderer: this.renderer,
             color: "#3388ff",
           }
         );

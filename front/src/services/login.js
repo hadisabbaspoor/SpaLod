@@ -27,13 +27,15 @@ export async function checkLogin() {
       logged = true;
       username = (await res.json()).username;
     } catch {
-      if (
-        window.location.pathname !== "/login" &&
-        window.location.pathname !== "/register"
-      ) {
-        window.location.href = "/login";
-      }
-      logged = false;
+          const path = window.location.pathname || "";
+    const isPublicRoute =
+      path === "/login" ||
+      path === "/register" ||
+      path.startsWith("/reset-password");
+    if (!isPublicRoute) {
+      window.location.href = "/login";
+    }
+    logged = false;
     }
   }
 }
