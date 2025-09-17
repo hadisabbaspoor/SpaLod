@@ -21,6 +21,7 @@ from pathlib import Path
 import geopandas as gpd
 from shapely.geometry import mapping, shape
 import html
+import xml.etree.ElementTree as ET
 
 from ..serializers import UploadedFileSerializer
 from ..utils.GraphDBManager import validate_geojson_file,GraphDBManager
@@ -65,6 +66,18 @@ def drop_z_if_nan(geom):
         return shape(new_geom)
     except Exception:
         return None
+    
+def is_gml_featurecollection_empty(path: str) -> bool:
+
+    """Return True if the GML FeatureCollection has zero members."""
+    try:
+        for event, elem in ET.iterparse(path, events=("start",)):
+            tag = elem.tag.split('}')[-1]  # strip namespace
+            if tag in ("member", "featureMember"):
+                return False
+        return True
+    except ET.ParseError:
+        return False
     
 def extract_and_find_shp(zip_path: str) -> tuple[Path, Path]:
     """
@@ -218,6 +231,12 @@ class FileUploadView(APIView):
 
                 elif file_extension == ".gml":
                     print("[INFO] Converting GML to GeoJSON…")
+                    if is_gml_featurecollection_empty(file_path):
+                        return Response(
+                            {"error_code": "NO_FEATURES", "error": "No features found in the GML file."},
+                            status=status.HTTP_400_BAD_REQUEST
+                        )
+                    
                     geojson_path = os.path.join(upload_dir, f"{file_uuid}.geojson")
                     convert_gml_to_geojson(file_path, geojson_path)
                     file_path = geojson_path
