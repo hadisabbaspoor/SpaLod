@@ -17,6 +17,7 @@ import ResetPassword from "./views/ResetPassword.vue";
 import ResetPasswordConfirm from "./views/ResetPasswordConfirm.vue";
 
 import { checkLogin, isLogged } from "./services/login";
+import './styles/auth.css';
 
 const routes = [
   { path: "/admin", component: Admin },

@@ -1,26 +1,28 @@
 <template>
-  <div class="reset-container">
-    <h2>Reset Password</h2>
+  <div class="page-wrapper"> 
+    <div class="auth-card">
+      <h2>Reset Password</h2>
 
-    <form @submit.prevent="submitForm" class="form">
-      <div class="form-row">
-        <label for="email">Email</label>
-        <input
-          id="email"
-          type="email"
-          v-model.trim="email"
-          required
-          placeholder="you@example.com"
-        />
-      </div>
+      <form @submit.prevent="submitForm" class="form">
+        <div class="form-row">
+          <label for="email">Email</label>
+          <input
+            id="email"
+            type="email"
+            v-model.trim="email"
+            required
+            placeholder="you@example.com"
+          />
+        </div>
 
-      <button type="submit" :disabled="loading">
-        {{ loading ? "Sending..." : "Send reset link" }}
-      </button>
-    </form>
+        <button type="submit" :disabled="loading">
+          {{ loading ? "Sending..." : "Send reset link" }}
+        </button>
+      </form>
 
-    <p v-if="successMessage" class="success">{{ successMessage }}</p>
-    <p v-if="errorMessage" class="error">{{ errorMessage }}</p>
+      <p v-if="successMessage" class="success">{{ successMessage }}</p>
+      <p v-if="errorMessage" class="error">{{ errorMessage }}</p>
+    </div>
   </div>
 </template>
 

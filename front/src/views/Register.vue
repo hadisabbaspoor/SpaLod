@@ -1,26 +1,28 @@
 <template>
-  <div class="register-container">
-    <h2>Register</h2>
-    <form @submit.prevent="submitForm">
-      <div>
-        <label for="email">Email</label>
-        <input type="email" id="email" v-model="email" required />
-      </div>
-      <div>
-        <label for="password">Password</label>
-        <input type="password" id="password" v-model="password" required />
-      </div>
-      <div>
-        <label for="confirm-password">Confirm Password</label>
-        <input
-          type="password"
-          id="confirm-password"
-          v-model="confirmPassword"
-          required
-        />
-      </div>
-      <button type="submit">Register</button>
-    </form>
+  <div class="page-wrapper"> 
+    <div class="auth-card">
+      <h2>Register</h2>
+      <form @submit.prevent="submitForm">
+        <div>
+          <label for="email">Email</label>
+          <input type="email" id="email" v-model="email" required />
+        </div>
+        <div>
+          <label for="password">Password</label>
+          <input type="password" id="password" v-model="password" required />
+        </div>
+        <div>
+          <label for="confirm-password">Confirm Password</label>
+          <input
+            type="password"
+            id="confirm-password"
+            v-model="confirmPassword"
+            required
+          />
+        </div>
+        <button type="submit">Register</button>
+      </form>
+    </div>
   </div>
 </template>
 
@@ -141,17 +143,3 @@ export default {
   },
 };
 </script>
-
-<style>
-.register-container {
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  align-items: center;
-  width: 100vw;
-}
-
-.register-container > h2 {
-  margin-bottom: 20px;
-}
-</style>

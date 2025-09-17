@@ -1,24 +1,26 @@
 <template>
-  <div class="login-container">
-    <h2>Login</h2>
-    <form @submit.prevent="submitForm">
+  <div class="page-wrapper">
+    <div class="auth-card">
+      <h2>Login</h2>
+      <form @submit.prevent="submitForm">
+        <div>
+          <label for="email">Email</label>
+          <input type="email" id="email" v-model="email" required />
+        </div>
+        <div>
+          <label for="password">Password</label>
+          <input type="password" id="password" v-model="password" required />
+        </div>
+        <button type="submit">Login</button>
+      </form>
+      <!-- <p> Login with OAuth 2.0</p>
+        <button @click="oauthLogin()">Github</button> -->
       <div>
-        <label for="email">Email</label>
-        <input type="email" id="email" v-model="email" required />
+        <button @click="signInGitlab">Sign in with Gitlab</button>
       </div>
       <div>
-        <label for="password">Password</label>
-        <input type="password" id="password" v-model="password" required />
+        <router-link class="forgot-pass" to="/reset-password">Forgot your password?</router-link>
       </div>
-      <button type="submit">Login</button>
-    </form>
-    <!-- <p> Login with OAuth 2.0</p>
-      <button @click="oauthLogin()">Github</button> -->
-    <div>
-      <button @click="signInGitlab">Sign in with Gitlab</button>
-    </div>
-    <div style="margin-top: 10px;">
-      <router-link to="/reset-password">Forgot your password?</router-link>
     </div>
   </div>
 </template>
@@ -97,17 +99,3 @@ export default {
   },
 };
 </script>
-
-<style>
-.login-container {
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  align-items: center;
-  width: 100vw;
-}
-
-.login-container > h2 {
-  margin-bottom: 20px;
-}
-</style>

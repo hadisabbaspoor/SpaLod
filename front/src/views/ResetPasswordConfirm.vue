@@ -1,44 +1,46 @@
 <template>
-  <div class="reset-confirm">
-    <h2>Set a New Password</h2>
+  <div class="page-wrapper"> 
+    <div class="auth-card">
+      <h2>Set a New Password</h2>
 
-    <form @submit.prevent="submitForm" class="form">
-      <div class="form-row">
-        <label for="p1">New password</label>
-        <input
-          id="p1"
-          :type="show ? 'text' : 'password'"
-          v-model.trim="p1"
-          autocomplete="new-password"
-          required
-        />
-      </div>
+      <form @submit.prevent="submitForm" class="form">
+        <div class="form-row">
+          <label for="p1">New password</label>
+          <input
+            id="p1"
+            :type="show ? 'text' : 'password'"
+            v-model="p1"
+            autocomplete="new-password"
+            required
+          />
+        </div>
 
-      <div class="form-row">
-        <label for="p2">Confirm password</label>
-        <input
-          id="p2"
-          :type="show ? 'text' : 'password'"
-          v-model.trim="p2"
-          autocomplete="new-password"
-          required
-        />
-      </div>
+        <div class="form-row">
+          <label for="p2">Confirm password</label>
+          <input
+            id="p2"
+            :type="show ? 'text' : 'password'"
+            v-model="p2"
+            autocomplete="new-password"
+            required
+          />
+        </div>
 
-      <label class="show-row">
-        <input type="checkbox" v-model="show" />
-        Show passwords
-      </label>
+        <label class="show-row">
+          <input type="checkbox" v-model="show" />
+          Show passwords
+        </label>
 
-      <button type="submit" :disabled="loading">
-        {{ loading ? "Saving..." : "Save new password" }}
-      </button>
-    </form>
+        <button type="submit" :disabled="loading">
+          {{ loading ? "Saving..." : "Save new password" }}
+        </button>
+      </form>
 
-    <p v-if="success" class="success">
-      Your password has been updated. You can now sign in.
-    </p>
-    <p v-if="error" class="error">{{ error }}</p>
+      <p v-if="success" class="success">
+        Your password has been updated. You can now sign in.
+      </p>
+      <p v-if="error" class="error">{{ error }}</p>
+    </div>
   </div>
 </template>
 
@@ -110,7 +112,7 @@ export default {
         error: (xhr) => {
           try {
             const j = xhr.responseJSON || {};
-            const pick = (arr) => (Array.isArray(arr) ? arr.join(", ") : "");
+            const pick = (v) => (Array.isArray(v) ? "• " + v.join("\n• ") : (v || ""));
             this.error =
               j?.detail ||
               pick(j?.new_password2) ||
@@ -131,4 +133,22 @@ export default {
   },
 };
 </script>
+<style scoped>
+.auth-card .show-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;                 
+  margin: 6px 0 2px;
+  font-size: 14px;
+  color: #d1d5db;
+  user-select: none;       
+}
+
+.auth-card .show-row input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: #ef4444;    
+  cursor: pointer;
+}
+</style>
 
