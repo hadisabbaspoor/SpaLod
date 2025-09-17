@@ -13,8 +13,11 @@ import Loading from "./views/Loading.vue";
 import Login from "./views/Login.vue";
 import OgcApi from "./views/OgcApi.vue";
 import Register from "./views/Register.vue";
+import ResetPassword from "./views/ResetPassword.vue";
+import ResetPasswordConfirm from "./views/ResetPasswordConfirm.vue";
 
 import { checkLogin, isLogged } from "./services/login";
+import './styles/auth.css';
 
 const routes = [
   { path: "/admin", component: Admin },
@@ -24,6 +27,9 @@ const routes = [
   { path: "/login", component: Login },
   { path: "/ogc-api", component: OgcApi },
   { path: "/register", component: Register },
+  { path: "/reset-password", component: ResetPassword },
+  { path: "/reset-password/:uid/:token", component: ResetPasswordConfirm }
+
 ];
 
 const router = createRouter({
@@ -36,7 +42,8 @@ router.beforeEach(async (to, from) => {
     !isLogged() &&
     to.path !== "/login" &&
     to.path !== "/register" &&
-    to.path !== "/login/gitlab/"
+    to.path !== "/login/gitlab/" &&
+    !to.path.startsWith("/reset-password") 
   ) {
     return { path: "/login" };
   }
