@@ -20,6 +20,7 @@ import io, zipfile, tempfile, shutil
 from pathlib import Path
 import geopandas as gpd
 from shapely.geometry import mapping, shape
+from pyproj import Transformer
 import html
 import xml.etree.ElementTree as ET
 
@@ -28,6 +29,7 @@ from ..utils.GraphDBManager import validate_geojson_file,GraphDBManager
 
 MAX_CHUNK_SIZE = 50 * 1024 * 1024 
 SAFE_RE = re.compile(r'[^A-Za-z0-9_-]')
+META_EPSG_LAGE_PAT = re.compile(r"EPSG[-\s]*Code\s*Lage\s*:\s*(\d+)", re.IGNORECASE)
 
 def sanitize_key(k: str) -> str:
     """Normalize a property name to a JSON/JS-friendly, RDF-safe identifier."""
@@ -79,31 +81,46 @@ def is_gml_featurecollection_empty(path: str) -> bool:
     except ET.ParseError:
         return False
     
-def extract_and_find_shp(zip_path: str) -> tuple[Path, Path]:
+def extract_and_find(zip_path: str, kind: str):
     """
-    extract a ZIP to a temp dir and find the first .shp.
-    Requires .shx and .dbf to be present alongside the .shp.
+    extract a ZIP to a temp dir and return paths based on kind.
+    kind ∈ {"shp", "xyz"}
     """
     tmpdir = Path(tempfile.mkdtemp())
     try:
         with zipfile.ZipFile(zip_path) as zf:
             zf.extractall(tmpdir)
 
-        shp_list = list(tmpdir.rglob("*.shp"))
-        if not shp_list:
-            raise ValueError("No .shp file found in ZIP.")
+        if kind == "shp":
+            shp_list = list(tmpdir.rglob("*.shp"))
+            shp = shp_list[0]
+            base = shp.with_suffix("")
+            sidecars = {p.suffix.lower() for p in shp.parent.glob(base.name + ".*")}
+            missing = {".shx", ".dbf"} - sidecars
+            if missing:
+                raise ValueError(f"Missing Shapefile sidecars: {', '.join(sorted(missing))}")
+            return tmpdir, shp
 
-        shp = shp_list[0]
-        base = shp.with_suffix("")
-        sidecars = {p.suffix.lower() for p in shp.parent.glob(base.name + ".*")}
-        missing = {".shx", ".dbf"} - sidecars
-        if missing:
-            raise ValueError(f"Missing Shapefile sidecars: {', '.join(sorted(missing))}")
+        if kind == "xyz":
+            xyz_list = list(tmpdir.rglob("*.xyz"))
+            xyz = xyz_list[0]
+            meta = xyz.with_suffix(".meta")
+            return tmpdir, xyz, (meta if meta.exists() else None)
 
-        return tmpdir, shp
+        raise ValueError("Unsupported kind; use 'shp' or 'xyz'.")
+
     except Exception:
         shutil.rmtree(tmpdir, ignore_errors=True)
         raise
+
+def parse_epsg_from_meta(meta_path: Path):
+    """Return horizontal EPSG from a .meta file (or None if not present)."""
+    try:
+        text = Path(meta_path).read_text(encoding="utf-8", errors="ignore")
+    except Exception:
+        return None
+    m = META_EPSG_LAGE_PAT.search(text)
+    return int(m.group(1)) if m else None
 
 def remove_html_tags(path: str, keys: tuple = ()):
     """
@@ -156,7 +173,7 @@ def convert_shapefile_zip_to_geojson(zip_path: str, out_geojson_path: str) -> No
     Convert a Shapefile contained in a ZIP to GeoJSON (EPSG:4326).
     Cleans geometries (drop Z=NaN, remove nulls).
     """
-    tmpdir, shp = extract_and_find_shp(zip_path)
+    tmpdir, shp = extract_and_find(zip_path, "shp")
     try:
         gdf = gpd.read_file(shp)
 
@@ -170,6 +187,60 @@ def convert_shapefile_zip_to_geojson(zip_path: str, out_geojson_path: str) -> No
         gdf.to_file(out_geojson_path, driver="GeoJSON")
     finally:
         shutil.rmtree(tmpdir, ignore_errors=True)
+
+def convert_xyz_to_geojson_core(xyz_path: str, out_geojson_path: str,
+                      meta: Path | None, fallback_src_epsg: str = "EPSG:25832") -> None:
+    """
+    Convert a .xyz to GeoJSON in WGS84 (EPSG:4326).
+    Uses EPSG from .meta if present, otherwise a default.
+    """
+    epsg = parse_epsg_from_meta(meta) if meta else None
+    src_epsg = f"EPSG:{epsg}" if epsg else fallback_src_epsg
+    transformer = Transformer.from_crs(src_epsg, "EPSG:4326", always_xy=True)
+
+    Path(out_geojson_path).parent.mkdir(parents=True, exist_ok=True)
+    with open(out_geojson_path, "w", encoding="utf-8") as dst, \
+         open(xyz_path, "r", encoding="utf-8", errors="ignore") as src:
+        dst.write('{"type":"FeatureCollection","features":[')
+        first = True
+        for line in src:
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            parts = line.split()
+            if len(parts) < 3:
+                continue
+            try:
+                x, y, z = float(parts[0]), float(parts[1]), float(parts[2])
+                lon, lat = transformer.transform(x, y)
+            except Exception:
+                continue
+
+            feature = {
+                "type": "Feature",
+                "geometry": {"type": "Point", "coordinates": [lon, lat]},
+                "properties": {"x": x, "y": y, "z": z},
+            }
+            if not first:
+                dst.write(",")
+            dst.write(json.dumps(feature, ensure_ascii=False, separators=(",", ":")))
+            first = False
+        dst.write("]}")
+
+
+def convert_xyz_or_zip_to_geojson(path: str, out_geojson_path: str,
+                           fallback_src_epsg: str = "EPSG:25832") -> None:
+    """Convert a .xyz or a .zip containing .xyz to GeoJSON (EPSG:4326)."""
+
+    if str(path).lower().endswith(".zip"):
+        tmpdir, xyz_path, meta = extract_and_find(path, "xyz")
+        try:
+            convert_xyz_to_geojson_core(xyz_path, out_geojson_path, meta, fallback_src_epsg)
+        finally:
+            shutil.rmtree(tmpdir, ignore_errors=True)
+    else:
+        convert_xyz_to_geojson_core(path, out_geojson_path, None, fallback_src_epsg)
+
 
 class FileUploadView(APIView):
     def post(self, request, *args, **kwargs):
@@ -222,16 +293,39 @@ class FileUploadView(APIView):
                 # processor = OntologyProcessor(file_uuid, ontology_url, original_url,metadata,user_id)
 
                 if file_extension == ".zip":
-                    print("[INFO] Converting Shapefile ZIP to GeoJSON…")
+                    print("[INFO] Converting ZIP to GeoJSON…")
                     geojson_path = os.path.join(upload_dir, f"{file_uuid}.geojson")
-                    convert_shapefile_zip_to_geojson(file_path, geojson_path)
+
+                    try:
+                        convert_shapefile_zip_to_geojson(file_path, geojson_path)
+                    except Exception:
+                        try:
+                            convert_xyz_or_zip_to_geojson(file_path, geojson_path, fallback_src_epsg="EPSG:25832")
+                        except Exception:
+                            graph_manager.delete_all(str(dataset_uri))
+                            shutil.rmtree(upload_dir, ignore_errors=True)
+                            return Response(
+                                {'error': 'ZIP must contain a Shapefile (.shp + .dbf + .shx) or .xyz'},
+                                status=status.HTTP_400_BAD_REQUEST
+                            )
+
                     file_path = geojson_path
                     original_url = f'/media/uploads/{file_uuid}/{file_uuid}.geojson'
                     file_extension = ".geojson" 
 
+                elif file_extension == '.xyz':
+                    print("[INFO] Converting raw XYZ to GeoJSON…")
+                    geojson_path = os.path.join(upload_dir, f"{file_uuid}.geojson")
+                    convert_xyz_or_zip_to_geojson(file_path, geojson_path, fallback_src_epsg="EPSG:25832")
+                    file_path = geojson_path
+                    original_url = f'/media/uploads/{file_uuid}/{file_uuid}.geojson'
+                    file_extension = ".geojson" 
+                
                 elif file_extension == ".gml":
                     print("[INFO] Converting GML to GeoJSON…")
                     if is_gml_featurecollection_empty(file_path):
+                        graph_manager.delete_all(str(dataset_uri))
+                        shutil.rmtree(upload_dir, ignore_errors=True)
                         return Response(
                             {"error_code": "NO_FEATURES", "error": "No features found in the GML file."},
                             status=status.HTTP_400_BAD_REQUEST
@@ -244,7 +338,7 @@ class FileUploadView(APIView):
                     file_extension = ".geojson"            
 
                 ## POINT CLOUD 
-                elif file_extension.endswith('las') or file_extension.endswith('laz') or file_extension.endswith('xyz'):
+                elif file_extension.endswith('las') or file_extension.endswith('laz') :
                     print("[INFO] Pointcloud detected !")
                     t = threading.Thread(
                         target=send_to_flyvast,
@@ -265,6 +359,8 @@ class FileUploadView(APIView):
                     remove_html_tags(file_path, keys=())
                     validation = validate_geojson_file(file_path)
                     if not validation['valid']:
+                        graph_manager.delete_all(str(dataset_uri))
+                        shutil.rmtree(upload_dir, ignore_errors=True)
                         e=validation['message']
                         return Response({'error': f'❌ Failed: {e}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
                     else:

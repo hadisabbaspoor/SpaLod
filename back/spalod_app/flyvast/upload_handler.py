@@ -14,7 +14,7 @@ class FlyvastUploadHandler(FileUploadHandler):
     def new_file(self, *args, **kwargs):
         super().new_file(*args, **kwargs)
         
-        self.flyvast_upload = self.file_name.endswith(".las") or self.file_name.endswith(".laz") or self.file_name.endswith('.xyz')
+        self.flyvast_upload = self.file_name.endswith(".las") or self.file_name.endswith(".laz") 
         
         if self.flyvast_upload:
             print("::::::: CreatePointcloud :::::::")
