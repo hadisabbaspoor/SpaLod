@@ -8,7 +8,7 @@
       <table>
         <tr class="feature" v-for="item of getFeatureItems()">
           <td class="title">
-            <div v-if="!item.new">{{ displayLastPortion(item.key) }}</div>
+            <div v-if="!item.new">{{ item.displayKey || displayLastPortion(item.key) }}</div>
             <input v-else type="text" v-model="item.key" />
           </td>
           <td>
