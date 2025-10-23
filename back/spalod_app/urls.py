@@ -7,6 +7,7 @@ from .views.properties import PropertiesQueryView
 from .views.sparql_query import SparqlQueryAPIView
 from .views.upload import FileUploadView
 from .views.ontology import UpdateOntologyView
+from .views.matching import MatchingDatasetsView, MatchingMappingsView, MatchingPropertiesView
 
 urlpatterns = [
     path('sparql-query/', SparqlQueryAPIView.as_view(), name='sparql_query_api'),
@@ -32,6 +33,9 @@ urlpatterns = [
     path('geo/generic/delete', GeoGenericDelete.as_view(), name='geo-feature-insert'),
     path('geo/feature/add/file', GeoFeatureAddFile.as_view(), name='geo-feature-add-file'),
     path('geo/feature/new', GeoFeatureNew.as_view(), name='geo-feature-new'),
+    path('matching/datasets/', MatchingDatasetsView.as_view(), name='matching_datasets'),
+    path("matching/properties/", MatchingPropertiesView.as_view(), name="matching_properties"),
+    path("matching/mappings/",   MatchingMappingsView.as_view(),   name="matching_mappings"),
 ]
 
 if settings.DEBUG:
