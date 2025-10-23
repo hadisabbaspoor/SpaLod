@@ -20,6 +20,25 @@ from ..utils.GraphDBManager import GraphDBManager,NS
 import re, uuid, json
 
 from rdflib import URIRef
+from ..models import VocabularyMapping
+from ..views.matching import label_from_uri
+
+def resolve_dataset_iri(user_id: int, feature_id: str):
+    """Resolve which dataset owns this feature """
+    g = GraphDBManager(user_id)
+    fid = (feature_id or "").strip().strip("<>")
+
+    sparql = f"""
+        SELECT ?ds
+        WHERE {{
+          ?ds a <http://www.w3.org/ns/dcat#Dataset> .
+          BIND( IRI(CONCAT(STR(?ds), "/collection")) AS ?col )
+          ?col ?_ <{fid}> .
+        }}
+    """
+    res = g.query_graphdb(sparql)
+    rows = res if isinstance(res, list) else res.get("results", {}).get("bindings", [])
+    return rows[0]["ds"]["value"] if rows else None
 
 class GeoGetAllCatalogsView(APIView):
     def get(self, request, *args, **kwargs):
@@ -253,6 +272,9 @@ class GeoGetItem(APIView):
         id = request.query_params.get('id')
         print(f"[INFO] ID:{id}")
 
+        ds = resolve_dataset_iri(request.user.id, id)
+        print(f"[INFO] dataset_iri for feature {id} => {ds}")
+
         sparql_query = f"""     
              SELECT ?key ?value ?label WHERE {{
                 <{id}> ?key ?value . 
@@ -265,6 +287,33 @@ class GeoGetItem(APIView):
             user_id = request.user.id
             graph_manager = GraphDBManager(user_id)
             results = graph_manager.query_graphdb(sparql_query)
+            try:
+                dataset_iri = ds
+                map_new_uri = {}
+                if dataset_iri:
+                    qs = VocabularyMapping.objects.filter(user=request.user, dataset_iri=dataset_iri)
+                    map_new_uri = {m.original_uri: (m.new_uri or "") for m in qs}
+
+                if isinstance(results, list):
+                    bindings = results
+                else:
+                    bindings = results.get("results", {}).get("bindings", [])
+
+                for b in bindings:
+                    key_val = b.get("key", {}).get("value")
+                    if not key_val:
+                        continue
+
+                    mapped_uri = map_new_uri.get(key_val, "")
+                    if mapped_uri:
+                        display_label = label_from_uri(mapped_uri)  
+                    else:
+                        display_label = key_val.split("#")[-1] if "#" in key_val else key_val.rsplit("/", 1)[-1]
+
+                    b["displayKey"] = {"type": "literal", "value": display_label}
+
+            except Exception:
+                pass
             return Response(results, status=status.HTTP_200_OK)
         except Exception as e:
             return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
