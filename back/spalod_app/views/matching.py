@@ -11,6 +11,9 @@ from urllib.parse import quote, unquote
 
 from ..utils.GraphDBManager import GraphDBManager
 from ..models import VocabularyMapping
+from spalod_app.utils.uskb import resolve_schema_uri_by_label , get_property_terms
+
+FIXED_PREFIX = "https://geovast3d.com/ontologies/spalod#"
 
 def label_from_uri(u: str) -> str:
     """Extract the label part from a URI (e.g. '...#name' → 'name')."""
@@ -26,11 +29,6 @@ def slugify_label(label: str) -> str:
     """Convert a label into a URI-safe format."""
     s = re.sub(r'\s+', '-', label.strip())
     return quote(s, safe='-._~')
-
-def mint_uri_like_dataset(dataset_iri: str, short_label: str) -> str:
-    """Generate a new URI based on the dataset IRI and a short label provided by the user."""
-    base = dataset_iri.split('#', 1)[0] 
-    return f"{base}#{slugify_label(short_label)}"
 
 def list_dataset_properties(user_id: int, dataset_iri: str):
     g = GraphDBManager(user_id=user_id)
@@ -130,6 +128,7 @@ class MatchingPropertiesView(APIView):
                 "original_label": orig_label,   
                 "mapped_label": mapped_short,         
                 "display_label": display,      
+                "mapped_uri": map_dict.get(uri, "") or None,      
             })
 
         data.sort(key=lambda x: x["display_label"].lower())
@@ -167,6 +166,7 @@ class MatchingMappingsView(APIView):
             return Response({"error": "items must be a non-empty JSON array"}, status=status.HTTP_400_BAD_REQUEST)
 
         saved = 0
+        deleted = 0
         details = []
 
         with transaction.atomic():
@@ -176,8 +176,8 @@ class MatchingMappingsView(APIView):
                     continue
 
                 uri = (it.get("original_uri") or it.get("uri") or "").strip().strip("<>")
-
                 new_label = (it.get("new_label") or "").strip()
+                source = (it.get("source") or "").strip().lower()
 
                 if new_label == "":
                     VocabularyMapping.objects.filter(
@@ -185,10 +185,18 @@ class MatchingMappingsView(APIView):
                         dataset_iri=dataset,
                         original_uri=uri,
                     ).delete()
+                    deleted += 1
                     details.append({"index": idx, "status": "deleted", "uri": uri})
                     continue
 
-                new_uri = mint_uri_like_dataset(dataset, new_label)
+                if source == "schema.org":
+                    try:
+                        resolved = resolve_schema_uri_by_label(new_label)
+                    except Exception:
+                        resolved = None
+                    new_uri = resolved or f"{FIXED_PREFIX}{slugify_label(new_label)}"
+                else:
+                    new_uri = f"{FIXED_PREFIX}{slugify_label(new_label)}"
 
                 obj, created = VocabularyMapping.objects.update_or_create(
                     user=request.user,
@@ -204,4 +212,20 @@ class MatchingMappingsView(APIView):
                     "new_uri": new_uri
                 })
 
-        return Response({"saved": saved, "details": details}, status=status.HTTP_200_OK)
+        return Response({"saved": saved, "deleted": deleted, "total": saved + deleted, "details": details}, status=status.HTTP_200_OK)
+    
+
+@authentication_classes([SessionAuthentication])
+@permission_classes([IsAuthenticated])        
+class SchemaOrgTerms(APIView):
+    """Returns schema.org property terms for autocomplete (cached)."""
+
+    def get(self, request):
+        q = (request.GET.get("q") or "").strip()
+        limit = int(request.GET.get("limit") or 1000)
+
+        try:
+            terms = get_property_terms(q=q, limit=limit)
+            return Response({"terms": terms}, status=status.HTTP_200_OK)
+        except Exception as e:
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)

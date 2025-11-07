@@ -211,3 +211,5 @@ REST_AUTH = {
     "PASSWORD_RESET_CONFIRM_URL": "reset-password/{uid}/{token}",
     
 }
+
+USKB_SOURCE = "https://schema.org/version/latest/schemaorg-current-https.ttl"

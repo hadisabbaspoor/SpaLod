@@ -49,23 +49,41 @@
           <table v-else class="prop-table">
             <thead>
               <tr>
-                <th style="width:50%">Current Vocabulary Term</th>
-                <th>New Term (Your Vocabulary)</th>
+                <th >Current Vocabulary Term</th>
+                <th>
+                  <div class="th-flex">
+                    <span>New Term (Your Vocabulary)</span>
+                    <select
+                      v-model="ontologyMode"
+                      @change="onOntologyModeChange"
+                      class="ontology-select"
+                    >
+                      <option value="USKB">USKB (schema.org)</option>
+                      <option value="manual">Manual</option>
+                    </select>
+                  </div>
+                </th>
               </tr>
             </thead>
             <tbody>
               <tr v-for="p in filteredProperties" :key="p.uri">
-                <td class="mono text-dim">{{ p.original_label }}</td>
+                <td class="text-dim">{{ p.original_label }}</td>
                 <td>
                   <input
                     v-model="p.mapped_label"
+                    :list="ontologyMode==='USKB' ? 'uskb-suggestions' : null"
+                    @input="onPickTerm(p)"
+                    @change="onPickTerm(p)"
+                    :placeholder="`Enter or select new Term for '${p.original_label}'`"
                     class="new_term"
-                    :placeholder="`Enter new term for '${p.original_label}'`"
                   />
                 </td>
               </tr>
             </tbody>
           </table>
+          <datalist id="uskb-suggestions">
+            <option v-for="t in uskbTerms" :key="t.uri" :value="t.label" />
+          </datalist>
         </div>
       </div>
 
@@ -96,6 +114,9 @@ export default {
       loading: false,
       error: "",
       saving: false,
+      ontologyMode: "USKB",   
+      uskbTerms: [],          
+      uskbLoading: false,
     };
   },
   async mounted() {
@@ -103,6 +124,7 @@ export default {
     axios.defaults.xsrfCookieName = "csrftoken";
     axios.defaults.xsrfHeaderName = "X-CSRFToken";
     await this.loadDatasets();
+    this.loadUSKBSuggestions();
   },
   computed: {
     filteredProperties() {
@@ -172,13 +194,16 @@ export default {
       const changed = this.properties.filter(
         p => (p.mapped_label ?? "") !== (p._initial_mapped_label ?? "")
       );
+      if (changed.length === 0) return;
 
-      const items = changed.map(p => ({
-        original_uri: p.uri,
-        new_label: (p.mapped_label ?? "").trim(), 
-      }));
-
-      if (items.length === 0) return;
+        const items = changed.map(p => {
+          const obj = {
+            original_uri: p.uri,
+            new_label: (p.mapped_label ?? "").trim(),
+            source: this.ontologyMode === "USKB" ? "schema.org" : "manual",
+          };
+          return obj;
+        });
 
       this.saving = true;
       this.error = "";
@@ -190,13 +215,50 @@ export default {
 
         await this.loadProperties(this.selectedDataset);
 
-        alert(`Saved ${data?.saved ?? items.length} mappings successfully.`);
+        const saved = data?.saved ?? 0;
+        const deleted = data?.deleted ?? 0;
+        const total = (data?.total ?? (saved + deleted));
+
+        let msg = "";
+        if (saved > 0 && deleted > 0) {
+          msg = `${saved} mapping${saved === 1 ? "" : "s"} saved and ${deleted} deleted successfully.`;
+        } else if (saved > 0) {
+          msg = `${saved} mapping${saved === 1 ? "" : "s"} saved successfully.`;
+        } else if (deleted > 0) {
+          msg = `${deleted} mapping${deleted === 1 ? "" : "s"} deleted successfully.`;
+        }
+        if (msg) alert(msg);
       } catch (e) {
         console.error("save mappings error:", e);
         this.error = "Failed to save mappings.";
       } finally {
         this.saving = false;
       }
+    },
+    async loadUSKBSuggestions(q = "", kind = "property") {
+      this.uskbLoading = true;
+      try {
+        const { data } = await axios.get("/api/vocabulary/uskb/", {
+          params: { kind, limit: 2000, q },
+          withCredentials: true,
+    });
+        this.uskbTerms = data?.terms || [];
+      } catch (e) {
+        console.error("Load USKB failed:", e);
+        this.uskbTerms = [];
+      } finally {
+        this.uskbLoading = false;
+      }
+    },
+    onOntologyModeChange() {
+      if (this.ontologyMode === "USKB" && this.uskbTerms.length === 0) {
+        this.loadUSKBSuggestions();
+      }
+    },
+    onPickTerm(p) {
+      const t = this.uskbTerms.find(x => x.label === p.mapped_label);
+      p.mapped_uri = t ? t.uri : null;
+      p.mapped_source = t ? "schema.org" : (this.ontologyMode === "USKB" ? "schema.org" : "manual");
     },
   },
 };
@@ -211,21 +273,32 @@ export default {
   width: 100%;
   box-sizing: border-box;
 }
+
 .matching-card {
   background: white;
   border-radius: 12px;
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
   border: 1px solid #e5e7eb;
-  width: 100%;
+  width: 90%;
   max-width: none;
-  margin: 0;
+  margin: 0 auto;
 }
+
 .matching-header {
   padding: 1.5rem 2rem;
   border-bottom: 1px solid #e5e7eb;
-  h2 { font-size: 1.25rem; font-weight: 600; color: #111827; }
-  p  { font-size: 0.9rem;  color: #6b7280;  margin-top: 0.3rem; }
+  h2 {
+    font-size: 1.25rem;
+    font-weight: 600;
+    color: #232711;
+  }
+  p {
+    font-size: 0.9rem;
+    color: #6b7280;
+    margin-top: 0.3rem;
+  }
 }
+
 .matching-filters {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -235,19 +308,42 @@ export default {
   border-bottom: 1px solid #e5e7eb;
 
   .filter-item {
-    display: flex; flex-direction: column;
-    label { font-size: 0.85rem; color: #374151; margin-bottom: 0.4rem; }
-    select, input {
+    display: flex;
+    flex-direction: column;
+
+    label {  
+      font-size: 0.85rem;
+      color: #374151;
+      margin-bottom: 0.4rem;
+      font-weight: 700;
+    }
+
+    select,
+    input {
       padding: 0.5rem 0.75rem;
-      border: 1px solid #d1d5db; border-radius: 6px; font-size: 0.9rem; color: #111827;
-      &:focus { outline: none; border-color: #dc2626; box-shadow: 0 0 0 1px #dc2626; }
+      border: 1px solid #d1d5db;
+      border-radius: 6px;
+      font-size: 0.9rem;
+      color: #111827;
+
+      &:focus {
+        outline: none;
+        border-color: #dc2626;
+        box-shadow: 0 0 0 1px #dc2626;
+      }
     }
   }
 }
+
 .matching-table {
   padding: 2rem;
-  .empty-message { text-align: center; color: #6b7280; }
+
+  .empty-message {
+    text-align: center;
+    color: #6b7280;
+  }
 }
+
 .prop-table {
   width: 100%;
   border-collapse: collapse;
@@ -256,46 +352,109 @@ export default {
   border-radius: 8px;
   overflow: hidden;
 
-  th, td {
+  th,
+  td {
     padding: 16px 14px;
     border-bottom: 1px solid #f0f2f5;
     text-align: left;
     vertical-align: middle;
+    font-family: inherit;
+    font-size: 0.9rem;
+    color: #4B5563;
   }
+
   thead th {
     background: #fafafa;
     font-weight: 600;
-    color: #374151;
-    font-size: 0.9rem;
   }
-  tbody tr:hover { background: #fcfcfd; }
 
-  .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
-  .text-dim { color: #000000; }
+  thead th:first-child {
+    width: 50%;
+  }
+
+  tbody tr:hover {
+    background: #fcfcfd;
+  }
+
+  tbody td {
+    color: #000;
+    font-weight: 500;
+  }
+
+  thead th:last-child > .th-flex {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    font: inherit;
+    color: inherit;
+  }
+
+  thead th:last-child > .th-flex > span {
+    font: inherit;
+    color: inherit;
+  }
+
+  thead th:last-child select {
+    font: inherit;
+    color: inherit;
+    padding: 0.25rem 0.4rem;
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    background: #fff;
+  }
+
+  thead th:last-child select:focus {
+    outline: none;
+    border-color: #dc2626;
+    box-shadow: 0 0 0 1px #dc2626;
+  }
 }
+
 .new_term {
-  width: 100%;
-  padding: 10px 14px;
+  width: 500px;
+  padding: 12px 14px;
   border: 1px solid #d1d5db;
   border-radius: 6px;
   font-size: 0.9rem;
+  font-weight: 500;
+  color: #000;
+  font-family: inherit;
 }
+
 .new_term:focus {
   outline: none;
   border-color: #dc2626;
   box-shadow: 0 0 0 1px #dc2626;
 }
+
 .matching-footer {
   padding: 1.5rem 2rem;
   background-color: #f9fafb;
   border-top: 1px solid #e5e7eb;
-  display: flex; justify-content: flex-end;
+  display: flex;
+  justify-content: flex-end;
+
   button {
-    background-color: #dc2626; color: white; font-weight: 600;
-    padding: 0.5rem 1.5rem; border-radius: 6px; border: none;
+    background-color: #dc2626;
+    color: white;
+    font-weight: 600;
+    padding: 0.5rem 1.5rem;
+    border-radius: 6px;
+    border: none;
     cursor: pointer;
-    transition: opacity .15s ease;
+    transition: opacity 0.15s ease;
   }
-  button.is-disabled { opacity: 0.6; cursor: not-allowed; }
+
+  button.is-disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+}
+input::placeholder {
+  font-family: inherit;
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: #9CA3AF; 
 }
 </style>
