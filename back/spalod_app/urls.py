@@ -37,6 +37,7 @@ urlpatterns = [
     path("matching/properties/", MatchingPropertiesView.as_view(), name="matching_properties"),
     path("matching/mappings/",   MatchingMappingsView.as_view(),   name="matching_mappings"),
     path('vocabulary/uskb/', SchemaOrgTerms.as_view(), name='vocabulary_uskb'),
+    path('geo/dataset/ld', GeoDatasetGeoJsonLD.as_view(), name='geo-dataset-ld'),
 ]
 
 if settings.DEBUG:

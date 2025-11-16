@@ -23,6 +23,11 @@ from rdflib import URIRef
 from ..models import VocabularyMapping
 from ..views.matching import label_from_uri
 
+from shapely.wkt import loads as load_wkt
+from shapely.geometry import mapping as geom_mapping
+from django.http import HttpResponse
+from collections import OrderedDict
+
 def resolve_dataset_iri(user_id: int, feature_id: str):
     """Resolve which dataset owns this feature """
     g = GraphDBManager(user_id)
@@ -630,3 +635,243 @@ class GeoFeatureNew(APIView):
         except Exception as e:
             # Generic fallback for unexpected errors
             return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        
+
+class GeoDatasetGeoJsonLD(APIView):
+
+    def get(self, request, *args, **kwargs):
+        print("::::::: GeoDatasetGeoJsonLD :::::::")
+
+        GEOJSON_VOCAB = "https://purl.org/geojson/vocab#"
+
+        GEOJSON_SPECIAL_URIS = {
+            f"{GEOJSON_VOCAB}type",
+            f"{GEOJSON_VOCAB}geometry",
+            f"{GEOJSON_VOCAB}properties",
+        }
+
+        dataset_id = request.query_params.get("id")
+        if not dataset_id:
+            return Response(
+                {"error": "id is required"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        dataset_iri = dataset_id.strip().strip("<>")
+
+        user = request.user
+        user_id = user.id
+        graph_manager = GraphDBManager(user_id)
+
+
+        qs = VocabularyMapping.objects.filter(user=user, dataset_iri=dataset_iri)
+        uri_map = {
+            m.original_uri: (m.new_uri or m.original_uri)
+            for m in qs
+        }
+
+        context = {
+            "geojson": "https://purl.org/geojson/vocab#",
+        }
+
+        RDF_TYPE_URI = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
+
+        def split_namespace(uri: str):
+            if "#" in uri:
+                ns, local = uri.rsplit("#", 1)
+                return ns + "#", local
+            else:
+                ns, local = uri.rsplit("/", 1)
+                return ns + "/", local
+
+        def pretty_prefix_for_ns(ns: str) -> str:
+            
+            if ns == "http://www.w3.org/1999/02/22-rdf-syntax-ns#":
+                return "rdf"
+            if ns == "https://schema.org/":
+                return "schema"
+            if ns == "https://geovast3d.com/ontologies/spalod#":
+                return "spalod"
+            if ns == "http://www.opengis.net/ont/geosparql#":
+                return "geosparql"
+
+            return "vocab"
+
+        def to_curie(uri: str) -> str:
+            ns, local = split_namespace(uri)
+            
+            prefix = pretty_prefix_for_ns(ns)
+
+            if prefix not in context:
+                context[prefix] = ns
+
+            return f"{prefix}:{local}"
+
+        def get_term_for_uri(original_uri: str) -> str:
+
+            target_uri = uri_map.get(original_uri, original_uri)
+
+            base_label = label_from_uri(target_uri) or "prop"
+            term = re.sub(r"[^A-Za-z0-9_]", "_", base_label) or "prop"
+
+            curie = to_curie(target_uri)
+
+  
+            suffix = 1
+            while term in context and context[term] != curie:
+                term = f"{base_label}_{suffix}"
+                term = re.sub(r"[^A-Za-z0-9_]", "_", term) or "prop"
+                suffix += 1
+
+            context[term] = curie
+            return term
+        
+
+        def sort_context(ctx: dict) -> OrderedDict:
+            prefixes = {}
+            terms_by_prefix = {}
+            other_terms = {}
+
+            for key, value in ctx.items():
+                if not isinstance(value, str):
+                    other_terms[key] = value
+                    continue
+
+                if value.endswith("#") or value.endswith("/"):
+                    prefixes[key] = value
+                else:
+                    if ":" in value:
+                        pfx, _ = value.split(":", 1)
+                        terms_by_prefix.setdefault(pfx, {})[key] = value
+                    else:
+                        other_terms[key] = value
+
+            ordered = OrderedDict()
+
+            preferred_order = ["geojson", "spalod", "schema"]
+            other_prefixes = sorted(p for p in prefixes.keys() if p not in preferred_order)
+            prefix_order = [p for p in preferred_order if p in prefixes] + other_prefixes
+
+            for p in prefix_order:
+
+                ordered[p] = prefixes[p]
+
+
+                for term in sorted(terms_by_prefix.get(p, {}).keys()):
+                    ordered[term] = terms_by_prefix[p][term]
+
+            for term in sorted(other_terms.keys()):
+                ordered[term] = other_terms[term]
+
+            return ordered
+
+
+        sparql_features = f"""
+            SELECT ?feature ?wkt
+            WHERE {{
+                <{dataset_iri}> geosparql:hasFeatureCollection ?fc .
+                ?fc  geosparql:hasFeature ?feature .
+                ?feature geosparql:hasGeometry ?geom .
+                ?geom geosparql:asWKT ?wkt .
+            }}
+        """
+
+        try:
+            res_feat = graph_manager.query_graphdb(sparql_features)
+        except Exception as e:
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+        if isinstance(res_feat, list):
+            feat_bindings = res_feat
+        else:
+            feat_bindings = res_feat.get("results", {}).get("bindings", [])
+
+        features = []
+
+        for row in feat_bindings:
+            feature_iri = row.get("feature", {}).get("value")
+            wkt_value = row.get("wkt", {}).get("value")
+
+            if not feature_iri or not wkt_value:
+                continue
+
+            try:
+                geom = load_wkt(wkt_value)
+                geometry = geom_mapping(geom)
+            except Exception:
+                continue
+
+            sparql_props = f"""
+                SELECT ?p ?o
+                WHERE {{
+                    <{feature_iri}> ?p ?o .
+                    FILTER (?p != geosparql:hasGeometry)
+                }}
+            """
+
+            try:
+                res_props = graph_manager.query_graphdb(sparql_props)
+            except Exception:
+                res_props = []
+
+            if isinstance(res_props, list):
+                bindings = res_props
+            else:
+                bindings = res_props.get("results", {}).get("bindings", [])
+
+            props = {}
+
+            for b in bindings:
+                p_uri = b.get("p", {}).get("value")
+                o_node = b.get("o", {})
+
+                if not p_uri or not o_node:
+                    continue
+
+                if p_uri == RDF_TYPE_URI:
+                    continue
+
+                if p_uri in GEOJSON_SPECIAL_URIS:
+                    continue
+
+                term = get_term_for_uri(p_uri)
+
+                value = o_node.get("value")
+
+                if value is None or value == "None" or value == "":
+                    continue
+
+                if term in props:
+                    if isinstance(props[term], list):
+                        props[term].append(value)
+                    else:
+                        props[term] = [props[term], value]
+                else:
+                    props[term] = value
+
+            feature_obj = {
+                "type": "Feature",
+                "@id": feature_iri,
+                "geometry": geometry,
+                "properties": props,
+            }
+            features.append(feature_obj)
+
+        dataset_label = label_from_uri(dataset_iri) or "dataset"
+        file_name = re.sub(r"[^A-Za-z0-9_.-]", "_", dataset_label) or "dataset"
+        context = sort_context(context)
+        fc = {
+            "@context": context,
+            "type": "FeatureCollection",
+            "@id": dataset_iri,
+            "features": features,
+        }
+
+        data_str = json.dumps(fc, ensure_ascii=False, indent=2)
+
+        response = HttpResponse(
+            data_str,
+            content_type="application/ld+json",
+        )
+        response["Content-Disposition"] = f'attachment; filename="{file_name}.geojsonld"'
+        return response
