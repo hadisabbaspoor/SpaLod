@@ -1,3 +1,4 @@
+from email.mime import text
 import json
 import re
 from rest_framework.views import APIView
@@ -196,7 +197,13 @@ class MatchingMappingsView(APIView):
                         resolved = None
                     new_uri = resolved or f"{FIXED_PREFIX}{slugify_label(new_label)}"
                 else:
-                    new_uri = f"{FIXED_PREFIX}{slugify_label(new_label)}"
+                    text = new_label.strip()
+                    low = text.lower()
+                    
+                    if low.startswith("http://") or low.startswith("https://"):
+                        new_uri = text.strip("<>")
+                    else:
+                        new_uri = f"{FIXED_PREFIX}{slugify_label(new_label)}"
 
                 obj, created = VocabularyMapping.objects.update_or_create(
                     user=request.user,

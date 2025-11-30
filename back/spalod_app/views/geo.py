@@ -1,6 +1,6 @@
 import os
 import threading
-from urllib.parse import quote_plus
+from urllib.parse import quote_plus,urlparse
 from django.conf import settings
 from rest_framework.views import APIView
 from rest_framework.response import Response
@@ -695,7 +695,25 @@ class GeoDatasetGeoJsonLD(APIView):
             if ns == "http://www.opengis.net/ont/geosparql#":
                 return "geosparql"
 
-            return "vocab"
+            for key, value in context.items():
+   
+                if isinstance(value, str) and value == ns and (value.endswith("#") or value.endswith("/")):
+                    return key
+            try:
+                parsed = urlparse(ns)
+                base = (parsed.netloc or parsed.path or "vocab")
+
+                base = base.split(".")[0]
+            except Exception:
+                base = "vocab"
+            base = re.sub(r"[^A-Za-z0-9_]", "_", base) or "vocab"
+
+            prefix = base
+            i = 1
+            while prefix in context:
+                prefix = f"{base}{i}"
+                i += 1
+            return prefix
 
         def to_curie(uri: str) -> str:
             ns, local = split_namespace(uri)

@@ -72,9 +72,11 @@
                   <input
                     v-model="p.mapped_label"
                     :list="ontologyMode==='USKB' ? 'uskb-suggestions' : null"
-                    @input="onPickTerm(p)"
-                    @change="onPickTerm(p)"
-                    :placeholder="`Enter or select new Term for '${p.original_label}'`"
+                    @input="ontologyMode === 'USKB' ? onPickTerm(p) : null"
+                    @change="ontologyMode === 'USKB' ? onPickTerm(p) : null"
+                      :placeholder="ontologyMode === 'USKB'
+                        ? `Enter or select new Term for '${p.original_label}'`
+                        : `Enter label or URI for '${p.original_label}'`"
                     class="new_term"
                   />
                 </td>
