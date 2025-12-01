@@ -173,13 +173,14 @@ export default {
         });
 
         this.properties = (data.properties || []).map((p) => {
-          const mapped = p.mapped_label || ""; 
+          const value = p.mapped_uri || p.mapped_label || "";
           return {
             uri: p.uri,
             original_label: p.original_label,
-            mapped_label: mapped,
+            mapped_label: value,
+            mapped_uri: p.mapped_uri ,
             display_label: p.display_label,
-            _initial_mapped_label: mapped, 
+            _initial_mapped_label: value, 
           };
         });
       } catch (e) {

@@ -39,7 +39,7 @@ def list_dataset_properties(user_id: int, dataset_iri: str):
     sparql_pattern = f"""
         <{collection_iri}> ?_ ?feature .
         ?feature ?uri ?o .
-        FILTER (?uri != rdf:type)
+        FILTER (STRSTARTS(STR(?uri), "https://geovast3d.com/ontologies/spalod#"))
         OPTIONAL {{ ?uri rdfs:label ?l }}
         BIND( COALESCE(?l, STRAFTER(STR(?uri), "#")) AS ?name )
     """
