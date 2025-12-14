@@ -1,13 +1,35 @@
 from functools import lru_cache
 from rdflib import Graph, RDF, RDFS, OWL, URIRef
 from django.conf import settings
+import requests
+import gzip
 
+# @lru_cache(maxsize=1)
+# def load_graph():
+#     """Load schema.org graph once and cache it."""
+#     g = Graph()
+#     g.parse(settings.USKB_SOURCE, format="turtle")
+#     return g
 
 @lru_cache(maxsize=1)
 def load_graph():
     """Load schema.org graph once and cache it."""
+    url = settings.USKB_SOURCE
+    resp = requests.get(
+        url,
+        headers={"Accept-Encoding": "gzip, deflate"},
+        timeout=30,
+    )
+    resp.raise_for_status()
+
+    raw = resp.content
+    if raw[:2] == b"\x1f\x8b":   # GZIP signature
+        raw = gzip.decompress(raw)
+
+    turtle_text = raw.decode("utf-8")
     g = Graph()
-    g.parse(settings.USKB_SOURCE, format="turtle")
+    g.parse(data=turtle_text, format="turtle")
+
     return g
 
 
