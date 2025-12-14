@@ -51,16 +51,37 @@
               <tr>
                 <th >Current Vocabulary Term</th>
                 <th>
-                  <div class="th-flex">
-                    <span>New Term (Your Vocabulary)</span>
-                    <select
-                      v-model="ontologyMode"
-                      @change="onOntologyModeChange"
-                      class="ontology-select"
+                  <div class="th-header-inner">
+                    <div class="th-header-top">
+                      <span>New Term (Your Vocabulary)</span>
+                      <select
+                        v-model="ontologyMode"
+                        @change="onOntologyModeChange"
+                        class="ontology-select"
+                      >
+                        <option value="USKB">USKB (schema.org)</option>
+                        <option value="manual">Manual</option>
+                        <option value="url">Add from URL...</option>
+                      </select>
+                    </div>
+                    <div
+                      v-if="ontologyMode === 'url'"
+                      class="add-url-wrapper"
                     >
-                      <option value="USKB">USKB (schema.org)</option>
-                      <option value="manual">Manual</option>
-                    </select>
+                      <input
+                        v-model="ontologyUrl"
+                        type="text"
+                        class="new_term add-url-input"
+                        placeholder="Enter ontology URL"
+                      />
+                      <button
+                        type="button"
+                        class="add-url-btn"
+                        @click="onAddFromUrl"
+                      >
+                        Add
+                      </button>
+                    </div>
                   </div>
                 </th>
               </tr>
@@ -71,11 +92,13 @@
                 <td>
                   <input
                     v-model="p.mapped_label"
-                    :list="ontologyMode==='USKB' ? 'uskb-suggestions' : null"
-                    @input="ontologyMode === 'USKB' ? onPickTerm(p) : null"
-                    @change="ontologyMode === 'USKB' ? onPickTerm(p) : null"
-                      :placeholder="ontologyMode === 'USKB'
-                        ? `Enter or select new Term for '${p.original_label}'`
+                    :list="ontologyMode==='USKB' ? 'uskb-suggestions' : (ontologyMode === 'url' ? 'url-suggestions' : null)"
+                    @input="onTermInput(p)"
+                    @change="onTermInput(p)"
+                    :placeholder="ontologyMode === 'USKB'
+                      ? `Enter or select new Term for '${p.original_label}'`
+                      : ontologyMode === 'url'
+                        ? `Enter or select label from URL for '${p.original_label}'`
                         : `Enter label or URI for '${p.original_label}'`"
                     class="new_term"
                   />
@@ -85,6 +108,9 @@
           </table>
           <datalist id="uskb-suggestions">
             <option v-for="t in uskbTerms" :key="t.uri" :value="t.label" />
+          </datalist>
+          <datalist id="url-suggestions">
+            <option v-for="t in urlTerms" :key="t.uri" :value="t.label" />
           </datalist>
         </div>
       </div>
@@ -119,8 +145,18 @@ export default {
       ontologyMode: "USKB",   
       uskbTerms: [],          
       uskbLoading: false,
+      ontologyUrl: "",
+      urlTerms: [],
+      urlLoading: false,
     };
   },
+  watch: {
+  ontologyUrl(newVal) {
+    if (!newVal || newVal.trim() === "") {
+      this.urlTerms = [];
+    }
+  }
+},
   async mounted() {
     axios.defaults.withCredentials = true;
     axios.defaults.xsrfCookieName = "csrftoken";
@@ -159,6 +195,8 @@ export default {
       this.search = "";
       this.properties = [];
       this.error = "";
+      this.ontologyUrl = "";
+      this.urlTerms = [];
       if (!this.selectedDataset) return;
       await this.loadProperties(this.selectedDataset);
     },
@@ -200,9 +238,13 @@ export default {
       if (changed.length === 0) return;
 
         const items = changed.map(p => {
+          let newLabel = (p.mapped_label ?? "").trim();
+          if (this.ontologyMode === "url" && p.mapped_uri) {
+            newLabel = p.mapped_uri;
+          }
           const obj = {
             original_uri: p.uri,
-            new_label: (p.mapped_label ?? "").trim(),
+            new_label: newLabel,
             source: this.ontologyMode === "USKB" ? "schema.org" : "manual",
           };
           return obj;
@@ -253,15 +295,61 @@ export default {
         this.uskbLoading = false;
       }
     },
+    async onAddFromUrl() {
+      const url = (this.ontologyUrl || "").trim();
+      if (!url) {
+        alert("Please enter an ontology URL first.");
+        return;
+      }
+
+      this.urlLoading = true;
+      try {
+        const { data } = await axios.get("/api/vocabulary/inspire/", {
+          params: { url },
+          withCredentials: true,
+        });
+
+        this.urlTerms = data?.terms || [];
+
+        if (!this.urlTerms.length) {
+          alert("No terms found for this URL.");
+        } else {
+
+          this.ontologyMode = "url";
+        }
+      } catch (e) {
+        console.error("Load URL vocabulary failed:", e);
+        this.urlTerms = [];
+        alert("Failed to fetch vocabulary terms from the given URL.");
+      } finally {
+        this.urlLoading = false;
+      }
+    },
+
     onOntologyModeChange() {
       if (this.ontologyMode === "USKB" && this.uskbTerms.length === 0) {
         this.loadUSKBSuggestions();
       }
+      if (this.ontologyMode === "url" && (!this.ontologyUrl || this.ontologyUrl.trim() === "")) {
+        this.urlTerms = [];
+      }
     },
-    onPickTerm(p) {
-      const t = this.uskbTerms.find(x => x.label === p.mapped_label);
-      p.mapped_uri = t ? t.uri : null;
-      p.mapped_source = t ? "schema.org" : (this.ontologyMode === "USKB" ? "schema.org" : "manual");
+
+    onTermInput(p) {
+      if (this.ontologyMode === "USKB") {
+        const t = this.uskbTerms.find(x => x.label === p.mapped_label);
+        p.mapped_uri = t ? t.uri : null;
+        p.mapped_source = t ? "schema.org" : "schema.org";
+        return;
+      }
+      if (this.ontologyMode === "url") {
+        const t = this.urlTerms.find(x => x.label === p.mapped_label);
+        p.mapped_uri = t ? t.uri : null;     
+        p.mapped_source = t ? "url" : "manual";
+        return;
+      }
+      p.mapped_uri = null;
+      p.mapped_source = "manual";
     },
   },
 };
@@ -384,19 +472,35 @@ export default {
     font-weight: 500;
   }
 
-  thead th:last-child > .th-flex {
+  thead th:last-child .th-header-inner {
     display: flex;
-    align-items: center;
-    justify-content: space-between;
+    flex-direction: column;
     gap: 0.5rem;
-    font: inherit;
-    color: inherit;
   }
 
-  thead th:last-child > .th-flex > span {
-    font: inherit;
-    color: inherit;
+  thead th:last-child .th-header-top {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
   }
+
+  thead th:last-child .th-header-top span {
+    flex: 1;
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: #4B5563;
+  }
+
+  thead th:last-child .add-url-input {
+    width: 500px ; 
+    height: 26px ;
+  }
+
+  thead th:last-child .add-url-wrapper {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;  
+  } 
 
   thead th:last-child select {
     font: inherit;
