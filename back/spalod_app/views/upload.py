@@ -246,7 +246,7 @@ class FileUploadView(APIView):
                 ## POINT CLOUD 
                 elif file_extension.endswith('las') or file_extension.endswith('laz') or file_extension.endswith('xyz'):
                     print("[INFO] Pointcloud detected !")
-                    catalog_uri, dataset_uri = graph_manager.initialize_dataset_structure(catalog_name,dataset_name)
+                    catalog_uri, dataset_uri = graph_manager.initialize_dataset_structure(catalog_name, user_id, dataset_name)
                     triples_added = graph_manager.add_dcterms_metadata_to_dataset(dataset_uri,metadata)
                     print(f"✅ Added {len(triples_added)} DCTERMS metadata triples.")
                     t = threading.Thread(
@@ -271,7 +271,7 @@ class FileUploadView(APIView):
                         e=validation['message']
                         return Response({'error': f'❌ Failed: {e}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
                     else:
-                        catalog_uri, dataset_uri = graph_manager.initialize_dataset_structure(catalog_name,dataset_name)
+                        catalog_uri, dataset_uri = graph_manager.initialize_dataset_structure(catalog_name, user_id, dataset_name)
                         triples_added = graph_manager.add_dcterms_metadata_to_dataset(dataset_uri,metadata)
                         print(f"✅ Added {len(triples_added)} DCTERMS metadata triples.")
                         graph_manager.add_geojson_to_dataset(dataset_uri,file_path,original_url)

@@ -560,7 +560,7 @@ class GeoFeatureNew(APIView):
             catalog_name = re.sub(r"[ .-]", "_", catalog_name)
             dataset_name = re.sub(r"[ .-]", "_", dataset_name)
             graph_manager = GraphDBManager(user_id)
-            catalog_uri, dataset_uri = graph_manager.initialize_dataset_structure(catalog_name,dataset_name)
+            catalog_uri, dataset_uri = graph_manager.initialize_dataset_structure(catalog_name, user_id, dataset_name)
             triples_added = graph_manager.add_dcterms_metadata_to_dataset(dataset_uri,metadata)
             feature_collection_uri = graph_manager.get_or_create_feature_collection_uri(dataset_uri)
 
