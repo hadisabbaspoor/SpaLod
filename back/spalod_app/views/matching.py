@@ -1,3 +1,4 @@
+from email.mime import text
 import json
 import re
 from rest_framework.views import APIView
@@ -8,6 +9,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.decorators import authentication_classes, permission_classes
 from django.db import transaction
 from urllib.parse import quote, unquote
+import requests
 
 from ..utils.GraphDBManager import GraphDBManager
 from ..models import VocabularyMapping
@@ -38,7 +40,7 @@ def list_dataset_properties(user_id: int, dataset_iri: str):
     sparql_pattern = f"""
         <{collection_iri}> ?_ ?feature .
         ?feature ?uri ?o .
-        FILTER (?uri != rdf:type)
+        FILTER (STRSTARTS(STR(?uri), "https://geovast3d.com/ontologies/spalod#"))
         OPTIONAL {{ ?uri rdfs:label ?l }}
         BIND( COALESCE(?l, STRAFTER(STR(?uri), "#")) AS ?name )
     """
@@ -196,7 +198,13 @@ class MatchingMappingsView(APIView):
                         resolved = None
                     new_uri = resolved or f"{FIXED_PREFIX}{slugify_label(new_label)}"
                 else:
-                    new_uri = f"{FIXED_PREFIX}{slugify_label(new_label)}"
+                    text = new_label.strip()
+                    low = text.lower()
+                    
+                    if low.startswith("http://") or low.startswith("https://"):
+                        new_uri = text.strip("<>")
+                    else:
+                        new_uri = f"{FIXED_PREFIX}{slugify_label(new_label)}"
 
                 obj, created = VocabularyMapping.objects.update_or_create(
                     user=request.user,
@@ -229,3 +237,54 @@ class SchemaOrgTerms(APIView):
             return Response({"terms": terms}, status=status.HTTP_200_OK)
         except Exception as e:
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        
+
+@authentication_classes([SessionAuthentication])
+@permission_classes([IsAuthenticated])
+class InspireCodelistTerms(APIView):
+    """Fetches and returns terms from an Inspire codelist provided via URL."""
+
+    def get(self, request):
+        url = (request.GET.get("url") or "").strip()
+        q = (request.GET.get("q") or "").strip().lower()
+
+        if not url:
+            return Response(
+                {"error": "Missing 'url' parameter"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            resp = requests.get(url, timeout=10)
+            resp.raise_for_status()
+            data = resp.json()
+        except Exception as e:
+            return Response(
+                {"error": f"Failed to fetch codelist: {e}"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        codelist = data.get("codelist") or {}
+        items = []
+        for item in codelist.get("containeditems", []):
+            v = item.get("value") or {}
+            lbl_obj = v.get("label") or {}
+            label = lbl_obj.get("text") or ""
+            uri = v.get("id") or v.get("latestversion")
+
+            if not label or not uri:
+                continue
+
+            if q and q not in label.lower():
+                continue
+
+            items.append(
+                {
+                    "label": label,
+                    "uri": uri,
+                }
+            )
+
+        items.sort(key=lambda x: x["label"].lower())
+        return Response({"terms": items}, status=status.HTTP_200_OK)
+
