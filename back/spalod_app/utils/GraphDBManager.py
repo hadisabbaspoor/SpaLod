@@ -668,11 +668,11 @@ class GraphDBManager:
         except SPARQLExceptions.SPARQLWrapperException as e:
             print(f"SPARQL Query Error: {e}")
             return False
-    def dataset_exists(self,dataset_name):
+    def dataset_exists(self,dataset_name, user_id):
         """
         Check if the dataset already exists in the catalog.
         """
-        dataset_uri = URIRef(f"{NS['SPALOD']}{dataset_name}")
+        dataset_uri = URIRef(f"{NS['SPALOD']}{dataset_name}/{user_id}")
         query = f"""
         ASK {{
             ?x <{NS["DCAT"].dataset}> <{dataset_uri}> .
@@ -719,8 +719,8 @@ class GraphDBManager:
             print(f"[ERROR] Failed to upload RDF graph: {e}")
             raise
 
-    def create_dataset(self, name,catalog_uri):
-            dataset_uri = URIRef(f"{NS['SPALOD']}{name}")
+    def create_dataset(self, name,catalog_uri, user_id):
+            dataset_uri = URIRef(f"{NS['SPALOD']}{name}/{user_id}")
             dataset_data = [
                 (dataset_uri, RDF.type, NS["DCAT"].Dataset),
                 (dataset_uri, RDFS.label, Literal(name)),
@@ -770,10 +770,10 @@ class GraphDBManager:
             catalog_uri = URIRef(f"{NS['SPALOD']}{catalog_name}/{user_id}")
 
         # Create or retrieve dataset
-        if not self.dataset_exists(dataset_name):
-            dataset_uri = self.create_dataset(dataset_name, catalog_uri)
+        if not self.dataset_exists(dataset_name, user_id):
+            dataset_uri = self.create_dataset(dataset_name, catalog_uri, user_id)
         else:
-            dataset_uri = URIRef(f"{NS['SPALOD']}{dataset_name}")
+            dataset_uri = URIRef(f"{NS['SPALOD']}{dataset_name}/{user_id}")
 
         # Ensure dataset is linked to catalog
         check_dataset_query = f"""
