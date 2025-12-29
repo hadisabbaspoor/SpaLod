@@ -652,8 +652,8 @@ class GraphDBManager:
         except Exception as e:
             print(f"SPARQL CONSTRUCT query failed: {e}")
             return None
-    def catalog_exists(self, catalog_name):
-        catalog_uri = URIRef(f"{NS['SPALOD']}{catalog_name}")
+    def catalog_exists(self, catalog_name, user_id):
+        catalog_uri = URIRef(f"{NS['SPALOD']}{catalog_name}/{user_id}")
        
         query = f"""
         ASK {{
@@ -668,11 +668,11 @@ class GraphDBManager:
         except SPARQLExceptions.SPARQLWrapperException as e:
             print(f"SPARQL Query Error: {e}")
             return False
-    def dataset_exists(self,dataset_name):
+    def dataset_exists(self,dataset_name, user_id):
         """
         Check if the dataset already exists in the catalog.
         """
-        dataset_uri = URIRef(f"{NS['SPALOD']}{dataset_name}")
+        dataset_uri = URIRef(f"{NS['SPALOD']}{dataset_name}/{user_id}")
         query = f"""
         ASK {{
             ?x <{NS["DCAT"].dataset}> <{dataset_uri}> .
@@ -687,8 +687,8 @@ class GraphDBManager:
             print(f"[ERROR] SPARQL dataset_exists query failed: {e}")
             return False
 
-    def create_catalog(self, catalog_name):
-        catalog_uri = URIRef(f"{NS['SPALOD']}{catalog_name}")
+    def create_catalog(self, catalog_name, user_id):
+        catalog_uri = URIRef(f"{NS['SPALOD']}{catalog_name}/{user_id}")
 
         catalog_data = [
             (catalog_uri, RDF.type, NS["DCAT"].Catalog),
@@ -719,8 +719,8 @@ class GraphDBManager:
             print(f"[ERROR] Failed to upload RDF graph: {e}")
             raise
 
-    def create_dataset(self, name,catalog_uri):
-            dataset_uri = URIRef(f"{NS['SPALOD']}{name}")
+    def create_dataset(self, name,catalog_uri, user_id):
+            dataset_uri = URIRef(f"{NS['SPALOD']}{name}/{user_id}")
             dataset_data = [
                 (dataset_uri, RDF.type, NS["DCAT"].Dataset),
                 (dataset_uri, RDFS.label, Literal(name)),
@@ -750,7 +750,7 @@ class GraphDBManager:
             raise
 
 
-    def initialize_dataset_structure(self, catalog_name, dataset_name):
+    def initialize_dataset_structure(self, catalog_name, user_id, dataset_name):
         """
         Initializes catalog, dataset, and feature collection in the triple store
         if they do not already exist. Returns their URIs.
@@ -764,16 +764,16 @@ class GraphDBManager:
         """
 
         # Create or retrieve catalog
-        if not self.catalog_exists(catalog_name):
-            catalog_uri = self.create_catalog(catalog_name)
+        if not self.catalog_exists(catalog_name, user_id):
+            catalog_uri = self.create_catalog(catalog_name, user_id)
         else:
-            catalog_uri = URIRef(f"{NS['SPALOD']}{catalog_name}")
+            catalog_uri = URIRef(f"{NS['SPALOD']}{catalog_name}/{user_id}")
 
         # Create or retrieve dataset
-        if not self.dataset_exists(dataset_name):
-            dataset_uri = self.create_dataset(dataset_name, catalog_uri)
+        if not self.dataset_exists(dataset_name, user_id):
+            dataset_uri = self.create_dataset(dataset_name, catalog_uri, user_id)
         else:
-            dataset_uri = URIRef(f"{NS['SPALOD']}{dataset_name}")
+            dataset_uri = URIRef(f"{NS['SPALOD']}{dataset_name}/{user_id}")
 
         # Ensure dataset is linked to catalog
         check_dataset_query = f"""
