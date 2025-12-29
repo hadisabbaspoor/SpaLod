@@ -118,6 +118,14 @@
                 </button>
 
                 <button
+                  style="font-size: 12px"
+                  @click="onClickDatasetGeoJsonLD(geoItem.item.id)"
+                  v-if="geoItem.item.type !== 'SPARQL_QUERY'"
+                >
+                  GeoJSON-LD
+                </button>
+
+                <button
                   @click="onClickDatasetMap(geoItem.item.id)"
                   v-if="geoItem.item.type !== 'SPARQL_QUERY'"
                 >
@@ -1052,6 +1060,18 @@ export default {
 
       window.open(mapUrl, "_blank");
     },
+    onClickDatasetGeoJsonLD(datasetId) {
+      const url = `api/geo/dataset/ld?id=${encodeURIComponent(datasetId)}`;
+
+      const link = document.createElement("a");
+      link.href = url;
+      link.style.display = "none";
+
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    },
+    
     async onClickDatasetOwl(datasetId) {
       const res = await getDataset(datasetId);
       const owlUrl = res

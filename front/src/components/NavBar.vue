@@ -102,6 +102,13 @@
       </button>
       <button
         v-if="isLogged()"
+        @click="navigateTo('matching')"
+        :class="{ active: activeTab === 'matching' }"
+      >
+        Matching
+      </button>
+      <button
+        v-if="isLogged()"
         @click="navigateTo('external-links')"
         :class="{ active: activeTab === 'external-links' }"
       >

@@ -187,9 +187,10 @@ export default {
         id: featureId,
         items: res
           .filter((x) => x.metadatas?.key && x.metadatas?.value)
-          .map(({ metadatas: { key, value } }) => ({
+          .map(({ metadatas: { key, value , displayKey} }) => ({
             key,
             value,
+            displayKey
           })),
       };
 
@@ -449,9 +450,10 @@ export default {
         id: featureId,
         items: res
           .filter((x) => x.metadatas?.key && x.metadatas?.value)
-          .map(({ metadatas: { key, value } }) => ({
+          .map(({ metadatas: { key, value, displayKey } }) => ({
             key,
             value,
+            displayKey,
           })),
       };
     },

@@ -15,6 +15,7 @@ import OgcApi from "./views/OgcApi.vue";
 import Register from "./views/Register.vue";
 import ResetPassword from "./views/ResetPassword.vue";
 import ResetPasswordConfirm from "./views/ResetPasswordConfirm.vue";
+import Matching from "./views/Matching.vue";
 
 import { checkLogin, isLogged } from "./services/login";
 import './styles/auth.css';
@@ -28,7 +29,8 @@ const routes = [
   { path: "/ogc-api", component: OgcApi },
   { path: "/register", component: Register },
   { path: "/reset-password", component: ResetPassword },
-  { path: "/reset-password/:uid/:token", component: ResetPasswordConfirm }
+  { path: "/reset-password/:uid/:token", component: ResetPasswordConfirm },
+  { path: "/matching", component: Matching },
 
 ];
 
