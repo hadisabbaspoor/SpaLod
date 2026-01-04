@@ -304,7 +304,7 @@ export default {
 
       this.urlLoading = true;
       try {
-        const { data } = await axios.get("/api/vocabulary/inspire/", {
+        const { data } = await axios.get("/api/vocabulary/external/", {
           params: { url },
           withCredentials: true,
         });

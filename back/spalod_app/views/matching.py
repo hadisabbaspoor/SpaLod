@@ -10,6 +10,9 @@ from rest_framework.decorators import authentication_classes, permission_classes
 from django.db import transaction
 from urllib.parse import quote, unquote
 import requests
+from rdflib import Graph, URIRef
+from rdflib.namespace import SKOS, DCTERMS
+from rdflib.namespace import RDFS
 
 from ..utils.GraphDBManager import GraphDBManager
 from ..models import VocabularyMapping
@@ -69,6 +72,53 @@ def to_list(v):
             return []
     return []
 
+def get_label(g: Graph, s: URIRef, p: URIRef):
+    for o in g.objects(s, p):
+        txt = str(o).strip()
+        if txt:
+            return txt
+    return None
+
+def extract_terms_from_ttl_url(url: str):
+    if "github.com/" in url and "/blob/" in url:
+        url = url.replace("github.com/", "raw.githubusercontent.com/").replace("/blob/", "/")
+
+    resp = requests.get(url, timeout=30)
+    resp.raise_for_status()
+
+    g = Graph()
+    g.parse(data=resp.text, format="turtle")
+    # print("TTL triples:", len(g))
+
+    terms = []
+
+    for s in set(g.subjects()):
+        if not isinstance(s, URIRef):
+            continue
+
+        uri = str(s).strip()
+        if not uri :
+            continue
+
+        # 1) rdfs:label
+        label = get_label(g, s, RDFS.label)
+
+        # 2) skos:prefLabel
+        if not label:
+            label = get_label(g, s, SKOS.prefLabel)
+        # 3) dcterms:title
+        if not label:
+            label = get_label(g, s, DCTERMS.title)
+
+        # 4) fallback to URI
+        if not label:
+            label = label_from_uri(uri)
+
+        if label:
+            terms.append({"label": label, "uri": uri})
+
+    terms.sort(key=lambda x: x["label"].lower())
+    return terms
 
 @authentication_classes([SessionAuthentication])
 @permission_classes([IsAuthenticated])
@@ -241,8 +291,8 @@ class SchemaOrgTerms(APIView):
 
 @authentication_classes([SessionAuthentication])
 @permission_classes([IsAuthenticated])
-class InspireCodelistTerms(APIView):
-    """Fetches and returns terms from an Inspire codelist provided via URL."""
+class ExternalVocabularyTerms(APIView):
+    """Fetches and returns terms from a vocabulary provided via URL."""
 
     def get(self, request):
         url = (request.GET.get("url") or "").strip()
@@ -254,6 +304,12 @@ class InspireCodelistTerms(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        if url.lower().split("?", 1)[0].endswith(".ttl"):
+            try:
+                terms = extract_terms_from_ttl_url(url)
+                return Response({"terms": terms}, status=status.HTTP_200_OK)
+            except Exception as e:
+                return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
         try:
             resp = requests.get(url, timeout=10)
             resp.raise_for_status()
