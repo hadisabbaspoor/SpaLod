@@ -27,3 +27,16 @@ class VocabularyMapping(models.Model):
             check=Q(new_uri__isnull=True) | Q(new_uri__startswith='http'),
         ),
     ]
+        
+class UserVocabulary(models.Model):
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    title = models.CharField(max_length=200, blank=True, default="")
+    url = models.URLField(max_length=1000)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ("user", "url")
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return self.title or self.url
