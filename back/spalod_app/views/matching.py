@@ -8,14 +8,14 @@ from rest_framework.authentication import SessionAuthentication
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.decorators import authentication_classes, permission_classes
 from django.db import transaction
-from urllib.parse import quote, unquote
+from urllib.parse import quote, unquote, urlparse
 import requests
-from rdflib import Graph, URIRef
+from rdflib import RDF, Graph, URIRef
 from rdflib.namespace import SKOS, DCTERMS
-from rdflib.namespace import RDFS
+from rdflib.namespace import RDFS, OWL
 
 from ..utils.GraphDBManager import GraphDBManager
-from ..models import VocabularyMapping
+from ..models import VocabularyMapping , UserVocabulary
 from spalod_app.utils.uskb import resolve_schema_uri_by_label , get_property_terms
 
 FIXED_PREFIX = "https://geovast3d.com/ontologies/spalod#"
@@ -79,9 +79,15 @@ def get_label(g: Graph, s: URIRef, p: URIRef):
             return txt
     return None
 
-def extract_terms_from_ttl_url(url: str):
+def normalize_github_raw_url(url: str) -> str:
+    url = (url or "").strip()
     if "github.com/" in url and "/blob/" in url:
         url = url.replace("github.com/", "raw.githubusercontent.com/").replace("/blob/", "/")
+    return url
+
+def extract_terms_from_ttl_url(url: str):
+
+    url =normalize_github_raw_url(url)
 
     resp = requests.get(url, timeout=30)
     resp.raise_for_status()
@@ -98,6 +104,9 @@ def extract_terms_from_ttl_url(url: str):
 
         uri = str(s).strip()
         if not uri :
+            continue
+
+        if (s, RDF.type, OWL.Ontology) in g:
             continue
 
         # 1) rdfs:label
@@ -119,6 +128,36 @@ def extract_terms_from_ttl_url(url: str):
 
     terms.sort(key=lambda x: x["label"].lower())
     return terms
+
+def detect_vocab_kind(url: str) -> str | None:
+    """
+    Returns 'ttl' or 'json' if supported, otherwise None.
+    """
+    base = url.lower().split("?", 1)[0]
+    if base.endswith(".ttl"):
+        return "ttl"
+    if base.endswith(".json"):
+        return "json"
+    return None
+
+def title_from_vocab_url(url: str) -> str:
+    parsed = urlparse(url)
+    path = parsed.path or ""
+    last = path.rstrip("/").split("/")[-1] if path else ""
+
+    name = unquote(last).strip()
+
+    for ext in (".ttl", ".json"):
+        if name.lower().endswith(ext):
+            name = name[: -len(ext)]
+            break
+
+    if not name:
+        name = parsed.netloc
+
+    name = name.replace("_", " ").replace("-", " ").strip()
+
+    return name.title()
 
 @authentication_classes([SessionAuthentication])
 @permission_classes([IsAuthenticated])
@@ -344,3 +383,53 @@ class ExternalVocabularyTerms(APIView):
         items.sort(key=lambda x: x["label"].lower())
         return Response({"terms": items}, status=status.HTTP_200_OK)
 
+
+@authentication_classes([SessionAuthentication])
+@permission_classes([IsAuthenticated])
+class UserVocabularies(APIView):
+    """Returns the list of vocabularies saved by the current user."""
+
+    def get(self, request):
+        rows = (
+            UserVocabulary.objects
+            .filter(user=request.user)
+            .values("id", "title", "url", "created_at")
+            .order_by("-created_at")
+        )
+        return Response({"vocabularies": list(rows)}, status=status.HTTP_200_OK)
+    def post(self, request):
+        url = (request.data.get("url") or "").strip()
+        title = (request.data.get("title") or "").strip()
+
+        if not url:
+            return Response({"error": "Missing 'url' field"}, status=status.HTTP_400_BAD_REQUEST)
+        
+        url = normalize_github_raw_url(url)
+
+        kind = detect_vocab_kind(url)
+        if not kind:
+            return Response(
+                {"error": "Only .ttl and .json vocabularies are supported right now."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+
+        title = title_from_vocab_url(url)
+
+ 
+        obj, created = UserVocabulary.objects.get_or_create(
+            user=request.user,
+            url=url,
+            defaults={"title": title},
+        )
+
+        payload = {
+            "id": obj.id,
+            "title": obj.title,
+            "url": obj.url,
+        }
+
+        return Response(
+            payload,
+            status=status.HTTP_201_CREATED if created else status.HTTP_200_OK
+        )
