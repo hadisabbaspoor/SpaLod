@@ -77,6 +77,12 @@
                         class="new_term add-url-input"
                         placeholder="Enter ontology URL"
                       />
+                      <input
+                        v-model="ontologyTitle"
+                        type="text"
+                        class="new_term add-url-input add-url-title"
+                        placeholder="name this vocabulary"
+                      />
                       <button
                         type="button"
                         class="add-url-btn"
@@ -97,11 +103,9 @@
                     v-model="p.mapped_label"
                     :list="ontologyMode==='USKB' ? 'uskb-suggestions' : (isUserVocabMode ? 'url-suggestions' : null)"
                     @input="onTermInput(p)"
-                    :placeholder="ontologyMode === 'USKB'
-                      ? `Enter or select new Term for '${p.original_label}'`
-                      : ontologyMode === 'url'
-                        ? `Enter or select label from URL for '${p.original_label}'`
-                        : `Enter label or URI for '${p.original_label}'`"
+                    :placeholder="ontologyMode === 'manual'
+                      ? `Enter label or URI for '${p.original_label}'`
+                      : `Enter or select label from URL for '${p.original_label}'`"
                     class="new_term"
                   />
                 </td>
@@ -148,19 +152,14 @@ export default {
       uskbTerms: [],          
       uskbLoading: false,
       ontologyUrl: "",
+      ontologyTitle: "",
       urlTerms: [],
       urlLoading: false,
       userVocabularies: [],
       loadingUserVocabularies: false,
     };
   },
-  watch: {
-  ontologyUrl(newVal) {
-    if (!newVal || newVal.trim() === "") {
-      this.urlTerms = [];
-    }
-  }
-},
+
   async mounted() {
     axios.defaults.withCredentials = true;
     axios.defaults.xsrfCookieName = "csrftoken";
@@ -204,6 +203,7 @@ export default {
       this.properties = [];
       this.error = "";
       this.ontologyUrl = "";
+      this.ontologyTitle = "";
       this.urlTerms = [];
       if (!this.selectedDataset) return;
       await this.loadProperties(this.selectedDataset);
@@ -316,6 +316,7 @@ export default {
     },
     async onAddFromUrl() {
       const url = (this.ontologyUrl || "").trim();
+      const title = (this.ontologyTitle || "").trim();
       if (!url) {
         alert("Please enter an ontology URL first.");
         return;
@@ -332,24 +333,22 @@ export default {
 
         if (!this.urlTerms.length) {
           alert("No terms found for this URL.");
+          return;
         }
         const saved = await axios.post(
           "/api/vocabulary/user/",
-          { url },
+          { url , title },
           { withCredentials: true }
         );
         const savedVocab = saved.data;
+        
+        const r = await axios.get("/api/vocabulary/user/", { withCredentials: true });
+        this.userVocabularies = r.data.vocabularies;
+        const v = this.userVocabularies.find(x => x.id === savedVocab.id) || savedVocab;
 
-        const exists = this.userVocabularies.some(v => v.id === savedVocab.id);
-          if (!exists) {
-            this.userVocabularies.push({
-              id: savedVocab.id,
-              title: savedVocab.title,
-              url: savedVocab.url,
-          });
-        }
-        this.ontologyMode = `user_vocab:${savedVocab.id}`;
+        this.ontologyMode = `user_vocab:${v.id}`;
         this.ontologyUrl = "";
+        this.ontologyTitle = "";
       } catch (e) {
         console.error("Load URL vocabulary failed:", e);
         this.urlTerms = [];
@@ -362,6 +361,7 @@ export default {
     async onOntologyModeChange() {
       if (this.ontologyMode === "url") {
         this.ontologyUrl = "";
+        this.ontologyTitle = "";
         this.urlTerms = [];
         return;
       }
@@ -559,6 +559,10 @@ export default {
     width: 500px ; 
     height: 26px ;
   }
+
+  thead th:last-child .add-url-title {
+   width: 180px;   
+}
 
   thead th:last-child .add-url-wrapper {
     display: flex;

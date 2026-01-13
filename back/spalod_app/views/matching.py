@@ -394,7 +394,7 @@ class UserVocabularies(APIView):
             UserVocabulary.objects
             .filter(user=request.user)
             .values("id", "title", "url", "created_at")
-            .order_by("-created_at")
+            .order_by("created_at")
         )
         return Response({"vocabularies": list(rows)}, status=status.HTTP_200_OK)
     def post(self, request):
@@ -414,14 +414,18 @@ class UserVocabularies(APIView):
             )
 
 
-        title = title_from_vocab_url(url)
+        derived_title = title_from_vocab_url(url)
+        final_title = title or derived_title
 
  
         obj, created = UserVocabulary.objects.get_or_create(
             user=request.user,
             url=url,
-            defaults={"title": title},
+            defaults={"title": final_title},
         )
+        if not created and title and (obj.title != title):
+            obj.title = title
+            obj.save(update_fields=["title"])
 
         payload = {
             "id": obj.id,
