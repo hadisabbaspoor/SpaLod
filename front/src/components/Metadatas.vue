@@ -71,6 +71,17 @@
             />
           </div>
         </div>
+        <div v-if="file" class="metadata-element">
+          <h3>Metadata file:</h3>
+          <div class="metadata-input">
+            <input
+              type="file"
+              accept=".xml"
+              @change="onMetadataFileChange"
+              class="metadata-textbox"
+            />
+          </div>
+        </div>
       </div>
     </div>
     <div class="actions">
@@ -231,6 +242,7 @@ export default {
     return {
       queryables,
       metadata: {},
+      metadataFile: null,
       options: [],
       selectedOption: "",
       items: [],
@@ -258,7 +270,7 @@ export default {
         return;
       }
       if (this.file) {
-        uploadGeo(this.file, this.metadata);
+        uploadGeo(this.file, this.metadata , this.metadataFile);
       } else if (this.latlng) {
         const catalogName = this.metadata["catalog"];
         const datasetName = this.metadata["dataset"];
@@ -295,6 +307,10 @@ export default {
         this.$emit("featureAdded");
       }
       this.onClickCancel();
+    },
+    onMetadataFileChange(event) {
+      const file = event.target.files?.[0] || null;
+      this.metadataFile = file;
     },
     validateMetadatas() {
       for (const { required, q } of this.queryables.concat([
