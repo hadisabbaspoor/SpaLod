@@ -388,6 +388,12 @@ export default {
           (x) =>
             !x.key.startsWith("https://geovast3d.com/ontologies/spalod#has")
         );
+      } else if (kind === "File") {
+        return this.feature.items.filter(
+          (x) =>
+            x.key === "https://geovast3d.com/ontologies/spalod#hasFile" ||
+            x.displayKey === "metadata_file_url"
+        );
       } else {
         return this.feature.items.filter(
           (x) => x.key === `https://geovast3d.com/ontologies/spalod#has${kind}`
