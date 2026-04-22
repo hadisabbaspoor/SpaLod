@@ -8,6 +8,7 @@ from .views.sparql_query import SparqlQueryAPIView
 from .views.upload import FileUploadView
 from .views.ontology import UpdateOntologyView
 from .views.matching import MatchingDatasetsView, MatchingMappingsView, MatchingPropertiesView, SchemaOrgTerms, ExternalVocabularyTerms , UserVocabularies
+from .views.metadata_api import EvaluateMetadataView
 
 urlpatterns = [
     path('sparql-query/', SparqlQueryAPIView.as_view(), name='sparql_query_api'),
@@ -40,6 +41,7 @@ urlpatterns = [
     path('geo/dataset/ld', GeoDatasetGeoJsonLD.as_view(), name='geo-dataset-ld'),
     path('vocabulary/external/', ExternalVocabularyTerms.as_view(), name='vocabulary_external'),
     path("vocabulary/user/", UserVocabularies.as_view(), name="user_vocabularies"),
+    path('metadata/evaluate/', EvaluateMetadataView.as_view(), name='evaluate_metadata'),
 ]
 
 if settings.DEBUG:
