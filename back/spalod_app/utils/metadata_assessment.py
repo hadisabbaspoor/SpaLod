@@ -395,7 +395,11 @@ def collect_record_evidence(xml_path: Path) -> RecordEvidence:
             reference_systems.append(code)
     lineage_statements = descendant_texts(root, "statement")
     process_steps = sum(1 for node in root.iter() if local_name(node.tag) == "LI_ProcessStep")
-    companion_json = parse_json_evidence(xml_path.with_name(f"data_{xml_path.stem}.json"))
+    geojson_path = xml_path.with_name(f"{xml_path.stem.replace('_metadata', '')}.geojson")
+    if geojson_path.exists():
+        companion_json = parse_json_evidence(geojson_path)
+    else:
+        companion_json = parse_json_evidence(xml_path.with_name(f"data_{xml_path.stem}.json"))
     return RecordEvidence(
         source=xml_path,
         title=squash(title),
