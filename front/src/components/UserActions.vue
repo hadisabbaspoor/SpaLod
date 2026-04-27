@@ -974,7 +974,7 @@ export default {
       event.stopPropagation();
       const input = document.createElement("input");
       input.type = "file";
-      input.accept = ".owl, .json, .geojson, .las, .laz, .zip, .gml" ;
+      input.accept = ".owl, .json, .geojson, .las, .laz, .zip, .gml, .gpkg";
       input.click();
       input.onchange = async () => {
         this.$emit("fileSelected", input.files[0]);

@@ -171,6 +171,24 @@ def convert_shapefile_zip_to_geojson(zip_path: str, out_geojson_path: str) -> No
     finally:
         shutil.rmtree(tmpdir, ignore_errors=True)
 
+def convert_gpkg_to_geojson(in_path: str, out_path: str, layer: str | None = None) -> None:
+    """
+    Read GeoPackage, clean geometries, reproject to WGS84 (EPSG:4326),
+    sanitize columns, and write GeoJSON.
+    """
+    gdf = gpd.read_file(in_path, layer=layer)
+
+    gdf["geometry"] = gdf["geometry"].apply(drop_z_if_nan)
+    gdf = gdf[~gdf.geometry.isnull()]
+
+    if gdf.crs is not None:
+        gdf = gdf.to_crs(epsg=4326)
+
+    gdf = make_safe_columns(gdf)
+
+    Path(out_path).parent.mkdir(parents=True, exist_ok=True)
+    gdf.to_file(out_path, driver="GeoJSON")
+
 class FileUploadView(APIView):
     def post(self, request, *args, **kwargs):
         print("::::::: FileUploadView :::::::")
@@ -243,6 +261,15 @@ class FileUploadView(APIView):
                     original_url = f'/media/uploads/{file_uuid}/{file_uuid}.geojson'
                     file_extension = ".geojson"            
 
+                elif file_extension == ".gpkg":
+                    print("[INFO] Converting GeoPackage (.gpkg) to GeoJSON...")
+                    geojson_path = os.path.join(upload_dir, f"{file_uuid}.geojson")
+
+                    convert_gpkg_to_geojson(file_path, geojson_path, layer=None)
+
+                    file_path = geojson_path
+                    original_url = f'/media/uploads/{file_uuid}/{file_uuid}.geojson'
+                    file_extension = ".geojson"
                 ## POINT CLOUD 
                 elif file_extension.endswith('las') or file_extension.endswith('laz') or file_extension.endswith('xyz'):
                     print("[INFO] Pointcloud detected !")
@@ -262,7 +289,7 @@ class FileUploadView(APIView):
                     print(f"[INFO] Starting processing {file_extension} ")
 
                 else:
-                    return Response({'error': f'❌ Failed: Unsupported file type {file_extension}. Supported types are .zip (Shapefile), .gml ,.geojson, .json, .las, .laz, .xyz'}, status=status.HTTP_400_BAD_REQUEST)
+                    return Response({'error': f'❌ Failed: Unsupported file type {file_extension}. Supported types are .zip (Shapefile), .gml ,.geojson, .json, .gpkg, .las, .laz, .xyz'}, status=status.HTTP_400_BAD_REQUEST)
                 
                 if file_extension.lower() in ('.geojson', '.json'):
                     remove_html_tags(file_path, keys=())
