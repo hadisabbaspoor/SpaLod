@@ -7,7 +7,7 @@ from .views.properties import PropertiesQueryView
 from .views.sparql_query import SparqlQueryAPIView
 from .views.upload import FileUploadView
 from .views.ontology import UpdateOntologyView
-from .views.matching import MatchingDatasetsView, MatchingMappingsView, MatchingPropertiesView, SchemaOrgTerms, InspireCodelistTerms
+from .views.matching import MatchingDatasetsView, MatchingMappingsView, MatchingPropertiesView, SchemaOrgTerms, ExternalVocabularyTerms , UserVocabularies
 
 urlpatterns = [
     path('sparql-query/', SparqlQueryAPIView.as_view(), name='sparql_query_api'),
@@ -38,7 +38,8 @@ urlpatterns = [
     path("matching/mappings/",   MatchingMappingsView.as_view(),   name="matching_mappings"),
     path('vocabulary/uskb/', SchemaOrgTerms.as_view(), name='vocabulary_uskb'),
     path('geo/dataset/ld', GeoDatasetGeoJsonLD.as_view(), name='geo-dataset-ld'),
-    path('vocabulary/inspire/', InspireCodelistTerms.as_view(), name='vocabulary_inspire'),
+    path('vocabulary/external/', ExternalVocabularyTerms.as_view(), name='vocabulary_external'),
+    path("vocabulary/user/", UserVocabularies.as_view(), name="user_vocabularies"),
 ]
 
 if settings.DEBUG:

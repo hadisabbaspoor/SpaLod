@@ -61,6 +61,9 @@
                       >
                         <option value="USKB">USKB (schema.org)</option>
                         <option value="manual">Manual</option>
+                        <option v-for="v in userVocabularies" :key="v.id" :value="`user_vocab:${v.id}`">
+                          {{ v.title || v.url }}
+                        </option>
                         <option value="url">Add from URL...</option>
                       </select>
                     </div>
@@ -73,6 +76,12 @@
                         type="text"
                         class="new_term add-url-input"
                         placeholder="Enter ontology URL"
+                      />
+                      <input
+                        v-model="ontologyTitle"
+                        type="text"
+                        class="new_term add-url-input add-url-title"
+                        placeholder="name this vocabulary"
                       />
                       <button
                         type="button"
@@ -92,14 +101,11 @@
                 <td>
                   <input
                     v-model="p.mapped_label"
-                    :list="ontologyMode==='USKB' ? 'uskb-suggestions' : (ontologyMode === 'url' ? 'url-suggestions' : null)"
+                    :list="ontologyMode==='USKB' ? 'uskb-suggestions' : (isUserVocabMode ? 'url-suggestions' : null)"
                     @input="onTermInput(p)"
-                    @change="onTermInput(p)"
-                    :placeholder="ontologyMode === 'USKB'
-                      ? `Enter or select new Term for '${p.original_label}'`
-                      : ontologyMode === 'url'
-                        ? `Enter or select label from URL for '${p.original_label}'`
-                        : `Enter label or URI for '${p.original_label}'`"
+                    :placeholder="ontologyMode === 'manual'
+                      ? `Enter label or URI for '${p.original_label}'`
+                      : `Enter or select label from URL for '${p.original_label}'`"
                     class="new_term"
                   />
                 </td>
@@ -146,22 +152,20 @@ export default {
       uskbTerms: [],          
       uskbLoading: false,
       ontologyUrl: "",
+      ontologyTitle: "",
       urlTerms: [],
       urlLoading: false,
+      userVocabularies: [],
+      loadingUserVocabularies: false,
     };
   },
-  watch: {
-  ontologyUrl(newVal) {
-    if (!newVal || newVal.trim() === "") {
-      this.urlTerms = [];
-    }
-  }
-},
+
   async mounted() {
     axios.defaults.withCredentials = true;
     axios.defaults.xsrfCookieName = "csrftoken";
     axios.defaults.xsrfHeaderName = "X-CSRFToken";
     await this.loadDatasets();
+    await this.loadUserVocabularies();
     this.loadUSKBSuggestions();
   },
   computed: {
@@ -178,6 +182,9 @@ export default {
 
     dirtyCount() {
       return this.properties.filter(p => (p.mapped_label ?? "") !== (p._initial_mapped_label ?? "")).length;
+    },
+    isUserVocabMode() {
+      return typeof this.ontologyMode === "string" && this.ontologyMode.startsWith("user_vocab:");
     },
   },
   methods: {
@@ -196,6 +203,7 @@ export default {
       this.properties = [];
       this.error = "";
       this.ontologyUrl = "";
+      this.ontologyTitle = "";
       this.urlTerms = [];
       if (!this.selectedDataset) return;
       await this.loadProperties(this.selectedDataset);
@@ -228,6 +236,18 @@ export default {
         this.loading = false;
       }
     },
+    async loadUserVocabularies() {
+      this.loadingUserVocabularies = true;
+      try {
+        const { data } = await axios.get("/api/vocabulary/user/", { withCredentials: true });
+        this.userVocabularies = data?.vocabularies || [];
+      } catch (e) {
+        console.error("Load user vocabularies failed:", e);
+        this.userVocabularies = [];
+      } finally {
+        this.loadingUserVocabularies = false;
+      }
+    },
 
     async saveMappings() {
       if (!this.selectedDataset) return;
@@ -239,13 +259,13 @@ export default {
 
         const items = changed.map(p => {
           let newLabel = (p.mapped_label ?? "").trim();
-          if (this.ontologyMode === "url" && p.mapped_uri) {
+          if (this.isUserVocabMode && p.mapped_uri) {
             newLabel = p.mapped_uri;
           }
           const obj = {
             original_uri: p.uri,
             new_label: newLabel,
-            source: this.ontologyMode === "USKB" ? "schema.org" : "manual",
+            source: p.mapped_source || "manual",
           };
           return obj;
         });
@@ -262,7 +282,6 @@ export default {
 
         const saved = data?.saved ?? 0;
         const deleted = data?.deleted ?? 0;
-        const total = (data?.total ?? (saved + deleted));
 
         let msg = "";
         if (saved > 0 && deleted > 0) {
@@ -297,6 +316,7 @@ export default {
     },
     async onAddFromUrl() {
       const url = (this.ontologyUrl || "").trim();
+      const title = (this.ontologyTitle || "").trim();
       if (!url) {
         alert("Please enter an ontology URL first.");
         return;
@@ -304,7 +324,7 @@ export default {
 
       this.urlLoading = true;
       try {
-        const { data } = await axios.get("/api/vocabulary/inspire/", {
+        const { data } = await axios.get("/api/vocabulary/external/", {
           params: { url },
           withCredentials: true,
         });
@@ -313,10 +333,22 @@ export default {
 
         if (!this.urlTerms.length) {
           alert("No terms found for this URL.");
-        } else {
-
-          this.ontologyMode = "url";
+          return;
         }
+        const saved = await axios.post(
+          "/api/vocabulary/user/",
+          { url , title },
+          { withCredentials: true }
+        );
+        const savedVocab = saved.data;
+        
+        const r = await axios.get("/api/vocabulary/user/", { withCredentials: true });
+        this.userVocabularies = r.data.vocabularies;
+        const v = this.userVocabularies.find(x => x.id === savedVocab.id) || savedVocab;
+
+        this.ontologyMode = `user_vocab:${v.id}`;
+        this.ontologyUrl = "";
+        this.ontologyTitle = "";
       } catch (e) {
         console.error("Load URL vocabulary failed:", e);
         this.urlTerms = [];
@@ -326,12 +358,43 @@ export default {
       }
     },
 
-    onOntologyModeChange() {
+    async onOntologyModeChange() {
+      if (this.ontologyMode === "url") {
+        this.ontologyUrl = "";
+        this.ontologyTitle = "";
+        this.urlTerms = [];
+        return;
+      }
       if (this.ontologyMode === "USKB" && this.uskbTerms.length === 0) {
         this.loadUSKBSuggestions();
       }
-      if (this.ontologyMode === "url" && (!this.ontologyUrl || this.ontologyUrl.trim() === "")) {
-        this.urlTerms = [];
+      if (this.isUserVocabMode) {
+        const id = Number(this.ontologyMode.split(":")[1]);
+        const v = this.userVocabularies.find(x => x.id === id);
+        if (!v) return;
+
+        this.ontologyUrl = v.url; 
+
+        this.urlLoading = true;
+        try {
+          const { data } = await axios.get("/api/vocabulary/external/", {
+            params: { url: v.url },
+            withCredentials: true,
+          });
+          this.urlTerms = data?.terms || [];
+          console.log(
+            "mode:", this.ontologyMode,
+            "urlTerms:", this.urlTerms?.length
+          );
+        } catch (e) {
+          console.error("Load saved vocabulary terms failed:", e);
+          this.urlTerms = [];
+          alert("Failed to fetch terms for saved vocabulary.");
+        } finally {
+          this.urlLoading = false;
+        }
+
+        return;
       }
     },
 
@@ -339,11 +402,12 @@ export default {
       if (this.ontologyMode === "USKB") {
         const t = this.uskbTerms.find(x => x.label === p.mapped_label);
         p.mapped_uri = t ? t.uri : null;
-        p.mapped_source = t ? "schema.org" : "schema.org";
+        p.mapped_source = t ? "schema.org" : "manual";
         return;
       }
-      if (this.ontologyMode === "url") {
-        const t = this.urlTerms.find(x => x.label === p.mapped_label);
+      if (this.isUserVocabMode) {
+        const typed = (p.mapped_label || "").trim().toLowerCase();
+        const t = this.urlTerms.find(x => (x.label || "").trim().toLowerCase() === typed);
         p.mapped_uri = t ? t.uri : null;     
         p.mapped_source = t ? "url" : "manual";
         return;
@@ -495,6 +559,10 @@ export default {
     width: 500px ; 
     height: 26px ;
   }
+
+  thead th:last-child .add-url-title {
+   width: 180px;   
+}
 
   thead th:last-child .add-url-wrapper {
     display: flex;

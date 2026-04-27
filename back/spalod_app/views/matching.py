@@ -8,11 +8,14 @@ from rest_framework.authentication import SessionAuthentication
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.decorators import authentication_classes, permission_classes
 from django.db import transaction
-from urllib.parse import quote, unquote
+from urllib.parse import quote, unquote, urlparse
 import requests
+from rdflib import RDF, Graph, URIRef
+from rdflib.namespace import SKOS, DCTERMS
+from rdflib.namespace import RDFS, OWL
 
 from ..utils.GraphDBManager import GraphDBManager
-from ..models import VocabularyMapping
+from ..models import VocabularyMapping , UserVocabulary
 from spalod_app.utils.uskb import resolve_schema_uri_by_label , get_property_terms
 
 FIXED_PREFIX = "https://geovast3d.com/ontologies/spalod#"
@@ -69,6 +72,92 @@ def to_list(v):
             return []
     return []
 
+def get_label(g: Graph, s: URIRef, p: URIRef):
+    for o in g.objects(s, p):
+        txt = str(o).strip()
+        if txt:
+            return txt
+    return None
+
+def normalize_github_raw_url(url: str) -> str:
+    url = (url or "").strip()
+    if "github.com/" in url and "/blob/" in url:
+        url = url.replace("github.com/", "raw.githubusercontent.com/").replace("/blob/", "/")
+    return url
+
+def extract_terms_from_ttl_url(url: str):
+
+    url =normalize_github_raw_url(url)
+
+    resp = requests.get(url, timeout=30)
+    resp.raise_for_status()
+
+    g = Graph()
+    g.parse(data=resp.text, format="turtle")
+    # print("TTL triples:", len(g))
+
+    terms = []
+
+    for s in set(g.subjects()):
+        if not isinstance(s, URIRef):
+            continue
+
+        uri = str(s).strip()
+        if not uri :
+            continue
+
+        if (s, RDF.type, OWL.Ontology) in g:
+            continue
+
+        # 1) rdfs:label
+        label = get_label(g, s, RDFS.label)
+
+        # 2) skos:prefLabel
+        if not label:
+            label = get_label(g, s, SKOS.prefLabel)
+        # 3) dcterms:title
+        if not label:
+            label = get_label(g, s, DCTERMS.title)
+
+        # 4) fallback to URI
+        if not label:
+            label = label_from_uri(uri)
+
+        if label:
+            terms.append({"label": label, "uri": uri})
+
+    terms.sort(key=lambda x: x["label"].lower())
+    return terms
+
+def detect_vocab_kind(url: str) -> str | None:
+    """
+    Returns 'ttl' or 'json' if supported, otherwise None.
+    """
+    base = url.lower().split("?", 1)[0]
+    if base.endswith(".ttl"):
+        return "ttl"
+    if base.endswith(".json"):
+        return "json"
+    return None
+
+def title_from_vocab_url(url: str) -> str:
+    parsed = urlparse(url)
+    path = parsed.path or ""
+    last = path.rstrip("/").split("/")[-1] if path else ""
+
+    name = unquote(last).strip()
+
+    for ext in (".ttl", ".json"):
+        if name.lower().endswith(ext):
+            name = name[: -len(ext)]
+            break
+
+    if not name:
+        name = parsed.netloc
+
+    name = name.replace("_", " ").replace("-", " ").strip()
+
+    return name.title()
 
 @authentication_classes([SessionAuthentication])
 @permission_classes([IsAuthenticated])
@@ -241,8 +330,8 @@ class SchemaOrgTerms(APIView):
 
 @authentication_classes([SessionAuthentication])
 @permission_classes([IsAuthenticated])
-class InspireCodelistTerms(APIView):
-    """Fetches and returns terms from an Inspire codelist provided via URL."""
+class ExternalVocabularyTerms(APIView):
+    """Fetches and returns terms from a vocabulary provided via URL."""
 
     def get(self, request):
         url = (request.GET.get("url") or "").strip()
@@ -254,6 +343,12 @@ class InspireCodelistTerms(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        if url.lower().split("?", 1)[0].endswith(".ttl"):
+            try:
+                terms = extract_terms_from_ttl_url(url)
+                return Response({"terms": terms}, status=status.HTTP_200_OK)
+            except Exception as e:
+                return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
         try:
             resp = requests.get(url, timeout=10)
             resp.raise_for_status()
@@ -288,3 +383,57 @@ class InspireCodelistTerms(APIView):
         items.sort(key=lambda x: x["label"].lower())
         return Response({"terms": items}, status=status.HTTP_200_OK)
 
+
+@authentication_classes([SessionAuthentication])
+@permission_classes([IsAuthenticated])
+class UserVocabularies(APIView):
+    """Returns the list of vocabularies saved by the current user."""
+
+    def get(self, request):
+        rows = (
+            UserVocabulary.objects
+            .filter(user=request.user)
+            .values("id", "title", "url", "created_at")
+            .order_by("created_at")
+        )
+        return Response({"vocabularies": list(rows)}, status=status.HTTP_200_OK)
+    def post(self, request):
+        url = (request.data.get("url") or "").strip()
+        title = (request.data.get("title") or "").strip()
+
+        if not url:
+            return Response({"error": "Missing 'url' field"}, status=status.HTTP_400_BAD_REQUEST)
+        
+        url = normalize_github_raw_url(url)
+
+        kind = detect_vocab_kind(url)
+        if not kind:
+            return Response(
+                {"error": "Only .ttl and .json vocabularies are supported right now."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+
+        derived_title = title_from_vocab_url(url)
+        final_title = title or derived_title
+
+ 
+        obj, created = UserVocabulary.objects.get_or_create(
+            user=request.user,
+            url=url,
+            defaults={"title": final_title},
+        )
+        if not created and title and (obj.title != title):
+            obj.title = title
+            obj.save(update_fields=["title"])
+
+        payload = {
+            "id": obj.id,
+            "title": obj.title,
+            "url": obj.url,
+        }
+
+        return Response(
+            payload,
+            status=status.HTTP_201_CREATED if created else status.HTTP_200_OK
+        )
