@@ -225,6 +225,7 @@ import AutoComplete from "primevue/autocomplete";
 import { getAllCatalogs, addGeoFeature } from "../services/geo";
 import { getUsername } from "../services/login";
 import { getAllDatasetsFromCatalogName } from "../services/api-geo";
+import { extractMetadataFromXml } from "../services/metadata-autofill";
 
 export default {
   emits: ["close", "featureAdded"],
@@ -308,9 +309,23 @@ export default {
       }
       this.onClickCancel();
     },
-    onMetadataFileChange(event) {
+    async onMetadataFileChange(event) {
       const file = event.target.files?.[0] || null;
       this.metadataFile = file;
+      if (!file) return;
+      try {
+        const extracted = await extractMetadataFromXml(file);
+
+        for (const [key, value] of Object.entries(extracted)) {
+          if (!value) continue;
+          if (["catalog", "title", "publisher"].includes(key)) continue;
+          if (!this.metadata[key] || this.metadata[key].trim() === "") {
+            this.metadata[key] = value;
+          }
+        }
+      } catch (error) {
+        console.error("Failed to parse metadata XML:", error);
+      }
     },
     validateMetadatas() {
       for (const { required, q } of this.queryables.concat([
