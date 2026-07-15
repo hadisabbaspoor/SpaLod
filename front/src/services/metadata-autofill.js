@@ -1,54 +1,25 @@
-import { queryables } from "./constants";
-
-const SKIP_AUTOFILL_FIELDS = ["catalog", "title", "publisher"];
-
-function text(node) {
-  return node?.textContent?.trim() || "";
-}
-
-function exactLocalName(node) {
-  return (node.localName || node.nodeName.split(":").pop()).toLowerCase();
-}
-
-function valuesByExactFieldName(doc, key) {
-  const normalizedKey = key.toLowerCase();
-  const values = [];
-
-  for (const node of doc.getElementsByTagName("*")) {
-    if (exactLocalName(node) !== normalizedKey) continue;
-
-    const value = text(node);
-    if (value && !values.includes(value)) {
-      values.push(value);
-    }
-  }
-
-  return values;
-}
+import { $fetch } from "./api";
 
 export async function extractMetadataFromXml(file) {
-  const xmlText = await file.text();
-  const xmlDoc = new DOMParser().parseFromString(xmlText, "text/xml");
+  const formData = new FormData();
+  formData.append("file", file);
 
-  if (xmlDoc.querySelector("parsererror")) {
-    throw new Error("Invalid XML file.");
-  }
+  const response = await $fetch("/api/metadata/parse/", {
+    method: "POST",
+    body: formData,
+  });
 
-  const result = {};
-
-  for (const field of queryables) {
-    const key = field.q;
-
-    if (!key) continue;
-    if (SKIP_AUTOFILL_FIELDS.includes(key)) continue;
-
-    const values = valuesByExactFieldName(xmlDoc, key);
-    const value = values.join(", ");
-
-    if (value) {
-      result[key] = value;
+  if (!response.ok) {
+    let message = `HTTP ${response.status}`;
+    try {
+      const data = await response.json();
+      if (data.error) message = data.error;
+    } catch (_) {
+      // ignore JSON parse errors
     }
+    throw new Error(`Failed to parse metadata XML: ${message}`);
   }
 
-  return result;
+  const data = await response.json();
+  return data.result || {};
 }
