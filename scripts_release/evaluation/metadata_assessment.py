@@ -120,6 +120,8 @@ class RecordEvidence:
     scope: str
     schema_location_present: bool
     distribution_formats: list[str]
+    format_specifications: list[str]
+    application_schema_information: list[str]
     service_types: list[str]
     online_resources: list[OnlineResource]
     operations: list[OperationMetadata]
@@ -334,10 +336,19 @@ def collect_record_evidence(xml_path: Path, data_path: Path | None = None,) -> R
     scope = "service" if root.findall(".//srv:SV_ServiceIdentification", NS) else "dataset"
     title = text_of(root.find(".//gmd:identificationInfo//gmd:citation//gmd:title", NS))
     distribution_formats: list[str] = []
+    format_specifications: list[str] = []
     for fmt in root.findall(".//gmd:distributionFormat//gmd:MD_Format", NS):
         for part in (text_of(fmt.find("./gmd:name", NS)), text_of(fmt.find("./gmd:version", NS))):
             if part:
                 distribution_formats.append(part)
+        specification = text_of(fmt.find("./gmd:specification", NS))
+        if specification:
+            format_specifications.append(specification)
+    application_schema_information: list[str] = []
+    for node in root.findall(".//gmd:MD_ApplicationSchemaInformation", NS):
+        value = text_of(node)
+        if value:
+            application_schema_information.append(value)
     service_types: list[str] = []
     for node in root.findall(".//srv:serviceType", NS):
         value = first_descendant_text(node, "LocalName")
@@ -409,6 +420,8 @@ def collect_record_evidence(xml_path: Path, data_path: Path | None = None,) -> R
         scope=scope,
         schema_location_present=bool(root.attrib.get(XSI_SCHEMA_LOCATION)),
         distribution_formats=sorted(set(squash(value) for value in distribution_formats if value)),
+        format_specifications=sorted(set(squash(value) for value in format_specifications if value)),
+        application_schema_information=sorted(set(squash(value) for value in application_schema_information if value)),
         service_types=sorted(set(squash(value) for value in service_types if value)),
         online_resources=parse_online_resources(root),
         operations=parse_operations(root),
@@ -437,7 +450,13 @@ def assess_structure(record: RecordEvidence) -> Decision:
     has_schema = False
     schema_reason = ""
     operation_names = {operation.name.lower() for operation in record.operations}
-    if "describefeaturetype" in operation_names:
+    if record.format_specifications:
+        has_schema = True
+        schema_reason = f"format specification is documented: {record.format_specifications[0]}"
+    elif record.application_schema_information:
+        has_schema = True
+        schema_reason = "application schema information is documented"
+    elif "describefeaturetype" in operation_names:
         has_schema = True
         schema_reason = "DescribeFeatureType is exposed"
     elif "getapidescription" in operation_names:
