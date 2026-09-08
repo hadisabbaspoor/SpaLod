@@ -74,6 +74,7 @@ WEAK_FEATURE_ID_KEYS = {
 }
 URL_RE = re.compile(r"https?://[^\s)>\"]+")
 YEAR_RE = re.compile(r"\b(19|20)\d{2}\b")
+DOI_RE = re.compile(r"^10\.\d{4,9}/\S+$", re.IGNORECASE)
 
 
 @dataclass
@@ -91,6 +92,11 @@ class OperationMetadata:
     dcps: list[str] = field(default_factory=list)
     connect_points: list[str] = field(default_factory=list)
 
+@dataclass
+class AggregateInformationEvidence:
+    name: str
+    identifier: str
+    association_type: str
 
 @dataclass
 class QualityReport:
@@ -128,6 +134,7 @@ class RecordEvidence:
     legal_texts: list[str]
     legal_urls: list[str]
     contextual_urls: list[str]
+    aggregate_information: list[AggregateInformationEvidence]
     identifiers: list[str]
     reference_systems: list[str]
     quality_reports: list[QualityReport]
@@ -210,6 +217,9 @@ def looks_like_persistent_identifier(value: str) -> bool:
     value = value.strip()
     return value.startswith(("http://", "https://", "urn:"))
 
+def looks_like_related_identifier(value: str) -> bool:
+    value = value.strip()
+    return looks_like_persistent_identifier(value) or bool(DOI_RE.match(value))
 
 def parse_online_resources(root: ET.Element) -> list[OnlineResource]:
     resources: list[OnlineResource] = []
@@ -253,6 +263,31 @@ def parse_operations(root: ET.Element) -> list[OperationMetadata]:
             operations.append(OperationMetadata(name=squash(name), dcps=dcps, connect_points=connect_points))
     return operations
 
+def parse_aggregate_information(root: ET.Element) -> list[AggregateInformationEvidence]:
+    records: list[AggregateInformationEvidence] = []
+
+    for node in root.findall(".//gmd:aggregationInfo//gmd:MD_AggregateInformation", NS):
+        name_node = node.find("./gmd:aggregateDataSetName", NS)
+        name = first_descendant_text(name_node, "title") if name_node is not None else ""
+
+        identifier_node = node.find("./gmd:aggregateDataSetIdentifier", NS)
+        identifier = first_descendant_text(identifier_node, "code") if identifier_node is not None else ""
+
+        association_type = ""
+        association_node = node.find("./gmd:associationType/*", NS)
+        if association_node is not None:
+            association_type = association_node.attrib.get("codeListValue", "") or text_of(association_node)
+
+        if name or identifier or association_type:
+            records.append(
+                AggregateInformationEvidence(
+                    name=squash(name),
+                    identifier=squash(identifier),
+                    association_type=squash(association_type),
+                )
+            )
+
+    return records
 
 def parse_quality_reports(root: ET.Element) -> list[QualityReport]:
     reports: list[QualityReport] = []
@@ -428,6 +463,7 @@ def collect_record_evidence(xml_path: Path, data_path: Path | None = None,) -> R
         legal_texts=legal_texts,
         legal_urls=sorted(set(normalize_url(url) for url in legal_urls if url)),
         contextual_urls=sorted(set(contextual_urls)),
+        aggregate_information=parse_aggregate_information(root),
         identifiers=sorted(set(squash(value) for value in identifiers if value)),
         reference_systems=sorted(set(squash(value) for value in reference_systems if value)),
         quality_reports=parse_quality_reports(root),
@@ -526,6 +562,16 @@ def assess_access(record: RecordEvidence) -> Decision:
 def assess_connections(record: RecordEvidence) -> Decision:
     if record.scope != "dataset":
         return Decision(False, "the record is service-scoped and does not expose dataset-level contextual links")
+
+    aggregate_references = [
+    item
+    for item in record.aggregate_information
+    if looks_like_related_identifier(item.identifier)
+    ]
+    if aggregate_references:
+        reference = aggregate_references[0]
+        return Decision(True,f"related resource is referenced through MD_AggregateInformation ({reference.identifier})",)
+    
     contextual = [
         url
         for url in record.contextual_urls
