@@ -17,6 +17,7 @@ NS = {
     "gmx": "http://www.isotc211.org/2005/gmx",
     "srv": "http://www.isotc211.org/2005/srv",
     "mrd": "http://standards.iso.org/iso/19115/-3/mrd/1.0",
+    "mri": "http://standards.iso.org/iso/19115/-3/mri/1.0",
 }
 XLINK_HREF = "{http://www.w3.org/1999/xlink}href"
 XSI_SCHEMA_LOCATION = "{http://www.w3.org/2001/XMLSchema-instance}schemaLocation"
@@ -136,6 +137,7 @@ class RecordEvidence:
     legal_urls: list[str]
     contextual_urls: list[str]
     aggregate_information: list[AggregateInformationEvidence]
+    associated_resource_identifiers: list[str]
     identifiers: list[str]
     reference_systems: list[str]
     quality_reports: list[QualityReport]
@@ -417,6 +419,18 @@ def collect_record_evidence(xml_path: Path, data_path: Path | None = None,) -> R
         href = normalize_url(href)
         if href:
             contextual_urls.append(href)
+
+    associated_resource_identifiers: list[str] = []
+    for node in root.findall(".//mri:MD_AssociatedResource", NS):
+        name_node = node.find("./mri:name", NS)
+        if name_node is None:
+            continue
+        for child in name_node.iter():
+            if local_name(child.tag) != "identifier":
+                continue
+            code = first_descendant_text(child, "code")
+            if code:
+                associated_resource_identifiers.append(code)
     identifiers: list[str] = []
     for node in root.findall(".//gmd:identificationInfo//gmd:identifier", NS):
         code = first_descendant_text(node, "code")
@@ -469,6 +483,7 @@ def collect_record_evidence(xml_path: Path, data_path: Path | None = None,) -> R
         legal_urls=sorted(set(normalize_url(url) for url in legal_urls if url)),
         contextual_urls=sorted(set(contextual_urls)),
         aggregate_information=parse_aggregate_information(root),
+        associated_resource_identifiers=sorted(set(squash(value) for value in associated_resource_identifiers if value)),
         identifiers=sorted(set(squash(value) for value in identifiers if value)),
         reference_systems=sorted(set(squash(value) for value in reference_systems if value)),
         quality_reports=parse_quality_reports(root),
@@ -576,6 +591,17 @@ def assess_connections(record: RecordEvidence) -> Decision:
     if aggregate_references:
         reference = aggregate_references[0]
         return Decision(True,f"related resource is referenced through MD_AggregateInformation ({reference.identifier})",)
+
+    associated_references = [
+        identifier
+        for identifier in record.associated_resource_identifiers
+        if looks_like_related_identifier(identifier)
+    ]
+    if associated_references:
+        return Decision(
+            True,
+            f"related resource is referenced through MD_AssociatedResource ({associated_references[0]})",
+        )
     
     contextual = [
         url
