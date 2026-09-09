@@ -16,6 +16,7 @@ NS = {
     "gml": "http://www.opengis.net/gml/3.2",
     "gmx": "http://www.isotc211.org/2005/gmx",
     "srv": "http://www.isotc211.org/2005/srv",
+    "mrd": "http://standards.iso.org/iso/19115/-3/mrd/1.0",
 }
 XLINK_HREF = "{http://www.w3.org/1999/xlink}href"
 XSI_SCHEMA_LOCATION = "{http://www.w3.org/2001/XMLSchema-instance}schemaLocation"
@@ -379,6 +380,10 @@ def collect_record_evidence(xml_path: Path, data_path: Path | None = None,) -> R
         specification = text_of(fmt.find("./gmd:specification", NS))
         if specification:
             format_specifications.append(specification)
+    for node in root.findall(".//mrd:distributionFormat//mrd:MD_Format/mrd:formatSpecificationCitation", NS):
+        value = text_of(node)
+        if value:
+            format_specifications.append(value)
     application_schema_information: list[str] = []
     for node in root.findall(".//gmd:MD_ApplicationSchemaInformation", NS):
         value = text_of(node)
