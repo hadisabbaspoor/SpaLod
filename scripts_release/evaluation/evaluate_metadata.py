@@ -48,10 +48,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--data",
         type=Path,
-        help=(
-            "Optional dataset file (JSON/GeoJSON) used as "
-            "additional evidence during evaluation."
-        ),
+        required=True,
+        help="Path to the dataset file (JSON/GeoJSON) used during evaluation."
     )
     return parser.parse_args()
 
@@ -76,21 +74,20 @@ def main() -> int:
         )
         return 1
 
-    # Validate optional dataset file
-    if data_path is not None:
-        if not data_path.exists():
-            print(
-                f"Error: Dataset file not found: {data_path}",
-                file=sys.stderr,
-            )
-            return 1
+    # Validate dataset file
+    if not data_path.exists():
+        print(
+            f"Error: Dataset file not found: {data_path}",
+            file=sys.stderr,
+        )
+        return 1
 
-        if not data_path.is_file():
-            print(
-                f"Error: Dataset path is not a file: {data_path}",
-                file=sys.stderr,
-            )
-            return 1
+    if not data_path.is_file():
+        print(
+            f"Error: Dataset path is not a file: {data_path}",
+            file=sys.stderr,
+        )
+        return 1
 
     # Read metadata
     try:
