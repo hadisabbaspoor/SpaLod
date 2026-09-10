@@ -138,7 +138,12 @@ class RecordEvidence:
     contextual_urls: list[str]
     aggregate_information: list[AggregateInformationEvidence]
     associated_resource_identifiers: list[str]
-    identifiers: list[str]
+    metadata_identifiers: list[str]
+    resource_identifiers: list[str]
+    data_set_uris: list[str]
+    service_identifiers: list[str]
+    operates_on_identifiers: list[str]
+    uuid_identifiers: list[str]
     reference_systems: list[str]
     quality_reports: list[QualityReport]
     lineage_statements: list[str]
@@ -431,28 +436,38 @@ def collect_record_evidence(xml_path: Path, data_path: Path | None = None,) -> R
             code = first_descendant_text(child, "code")
             if code:
                 associated_resource_identifiers.append(code)
-    identifiers: list[str] = []
+    metadata_identifiers: list[str] = []
+    file_identifier = root.find(".//gmd:fileIdentifier", NS)
+    if file_identifier is not None:
+        value = text_of(file_identifier)
+        if value:
+            metadata_identifiers.append(value)
+    resource_identifiers: list[str] = []
     for node in root.findall(".//gmd:identificationInfo//gmd:identifier", NS):
         code = first_descendant_text(node, "code")
         if code:
-            identifiers.append(code)
+            resource_identifiers.append(code)
+    service_identifiers: list[str] = []
     for node in root.findall(".//srv:identifier", NS):
         value = text_of(node)
         if value:
-            identifiers.append(value)
+            service_identifiers.append(value)
+    operates_on_identifiers: list[str] = []
     for node in root.findall(".//srv:operatesOn", NS):
         for attr in (node.attrib.get(XLINK_HREF, ""), node.attrib.get("uuidref", "")):
             if attr:
-                identifiers.append(normalize_url(attr))
+                operates_on_identifiers.append(normalize_url(attr))
+    uuid_identifiers: list[str] = []
     for node in root.findall(".//*[@uuid]", NS):
         value = node.attrib.get("uuid", "")
         if value:
-            identifiers.append(normalize_url(value))
+            uuid_identifiers.append(normalize_url(value))
+    data_set_uris: list[str] = []
     data_set_uri = root.find(".//gmd:dataSetURI", NS)
     if data_set_uri is not None:
         value = text_of(data_set_uri)
         if value:
-            identifiers.append(value)
+            data_set_uris.append(value)
     reference_systems: list[str] = []
     for node in root.findall(".//gmd:referenceSystemIdentifier", NS):
         code = first_descendant_text(node, "code")
@@ -484,7 +499,12 @@ def collect_record_evidence(xml_path: Path, data_path: Path | None = None,) -> R
         contextual_urls=sorted(set(contextual_urls)),
         aggregate_information=parse_aggregate_information(root),
         associated_resource_identifiers=sorted(set(squash(value) for value in associated_resource_identifiers if value)),
-        identifiers=sorted(set(squash(value) for value in identifiers if value)),
+        metadata_identifiers=sorted(set(squash(value) for value in metadata_identifiers if value)),
+        resource_identifiers=sorted(set(squash(value) for value in resource_identifiers if value)),
+        data_set_uris=sorted(set(squash(value) for value in data_set_uris if value)),
+        service_identifiers=sorted(set(squash(value) for value in service_identifiers if value)),
+        operates_on_identifiers=sorted(set(squash(value) for value in operates_on_identifiers if value)),
+        uuid_identifiers=sorted(set(squash(value) for value in uuid_identifiers if value)),
         reference_systems=sorted(set(squash(value) for value in reference_systems if value)),
         quality_reports=parse_quality_reports(root),
         lineage_statements=[squash(value) for value in lineage_statements if value],
@@ -625,27 +645,38 @@ def assess_license(record: RecordEvidence) -> Decision:
 
 
 def assess_identifiers(record: RecordEvidence) -> Decision:
-    has_dataset_identifier = any(looks_like_persistent_identifier(identifier) for identifier in record.identifiers)
-    if not has_dataset_identifier:
-        return Decision(False, "no persistent dataset identifier was found")
+    identifier_source = ""
+    has_resource_identifier = any(looks_like_persistent_identifier(identifier) for identifier in record.resource_identifiers)
+    if has_resource_identifier:
+        identifier_source = "gmd:identifier"
+    elif any( looks_like_persistent_identifier(identifier) for identifier in record.data_set_uris):
+        has_resource_identifier = True
+        identifier_source = "gmd:dataSetURI"
+    elif record.scope == "service" and any( looks_like_persistent_identifier(identifier) for identifier in record.operates_on_identifiers):
+        has_resource_identifier = True
+        identifier_source = "srv:operatesOn"
+    if not has_resource_identifier:
+        return Decision(False, "no persistent resource identifier was found")
     if not record.reference_systems:
-        return Decision(False, "no coordinate reference system is declared")
+        return Decision(False, f"persistent resource identifier from {identifier_source} is present, but no coordinate reference system is declared")
     if record.companion_json:
         if record.companion_json.feature_ids_present or record.companion_json.strong_feature_identifier:
             return Decision(
                 True,
+                f"persistent resource identifier from {identifier_source} is present; "
                 f"{record.companion_json.path.name} exposes feature identifiers and CRS metadata is present",
             )
         return Decision(
             False,
+            f"persistent resource identifier from {identifier_source} is present, but "
             f"{record.companion_json.path.name} lacks stable feature identifiers (only {', '.join(record.companion_json.id_like_properties) or 'weak ids'})",
         )
     lowered_formats = " ".join(format_hints(record))
     wfs_like = "wfs" in lowered_formats or any(operation.name.lower() == "getfeature" for operation in record.operations)
     gml_like = "gml" in lowered_formats
     if wfs_like or gml_like:
-        return Decision(True, "persistent dataset identifiers and CRS are present, and the resource is published through GML/WFS")
-    return Decision(False, "dataset identifiers exist, but there is no evidence of stable feature-level identifiers")
+        return Decision(True, f"persistent resource identifier from {identifier_source} and CRS are present, and the resource is published through GML/WFS")
+    return Decision(False, f"persistent resource identifier from {identifier_source} exists, but there is no evidence of stable feature-level identifiers")
 
 
 def assess_quality(record: RecordEvidence) -> Decision:
