@@ -407,15 +407,24 @@ def collect_record_evidence(xml_path: Path, data_path: Path | None = None,) -> R
             service_types.append(value)
     legal_texts: list[str] = []
     legal_urls: list[str] = []
-    for node in root.findall(".//gmd:resourceConstraints//gmd:otherConstraints", NS):
-        text = text_of(node)
-        if text:
-            legal_texts.append(text)
-            legal_urls.extend(extract_urls(text))
-        for child in node.iter():
-            href = child.attrib.get(XLINK_HREF)
-            if href:
-                legal_urls.append(normalize_url(href))
+    for constraint_name in (
+        "otherConstraints",
+        "useLimitation",
+        "accessConstraints",
+        "useConstraints",
+    ):
+        for node in root.findall(f".//gmd:resourceConstraints//gmd:{constraint_name}", NS):
+            text = text_of(node)
+            if text:
+                legal_texts.append(text)
+                legal_urls.extend(extract_urls(text))
+            for child in node.iter():
+                code_list_value = child.attrib.get("codeListValue", "")
+                if code_list_value:
+                    legal_texts.append(code_list_value)
+                href = child.attrib.get(XLINK_HREF)
+                if href:
+                    legal_urls.append(normalize_url(href))
     contextual_urls: list[str] = []
     for node in root.iter():
         if local_name(node.tag) != "Anchor":
