@@ -3,6 +3,8 @@ import sys
 from pathlib import Path
 
 from metadata_assessment import assess_xml_file
+from tempfile import TemporaryDirectory
+from dcat_to_iso import convert_dcat_to_iso
 
 
 ISO_NS_BYTES = (
@@ -144,8 +146,39 @@ def main() -> int:
         return 0
 
     if metadata_format == "dcat":
+        try:
+            iso_bytes = convert_dcat_to_iso(xml_bytes)
+
+            with TemporaryDirectory(prefix="spalod_dcat_") as temp_dir:
+                iso_path = Path(temp_dir) / f"{metadata_path.stem}.iso19139.xml"
+                iso_path.write_bytes(iso_bytes)
+
+                result = assess_xml_file(
+                    iso_path,
+                    data_path=data_path,
+                )
+
+        except Exception as exc:
+            print(
+                f"Error: Could not convert/evaluate DCAT metadata: {exc}",
+                file=sys.stderr,
+            )
+            return 1
+
         print()
-        print("DCAT metadata detected.")
+        print("Metadata Evaluation")
+        print("-------------------")
+        print(f"Dataset: {result.dataset}")
+        print(f"Scope: {result.scope}")
+        print(f"LETTER: {result.letter_code}")
+        print(f"Stars: {result.star_range}")
+        print()
+
+        for letter, decision in result.letters.items():
+            status = "PASS" if decision["passed"] else "FAIL"
+            print(f"{letter}: {status}")
+            print(f"   {decision['reason']}")
+
         return 0
 
     return 1
