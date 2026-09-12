@@ -1,0 +1,6 @@
+setuptools==72.1.0
+rdflib==7.0.0
+pygeometa==0.16.1
+lxml
+Shapely>=2.0,<3.0
+pyproj>=3.6,<4.0
